@@ -9,7 +9,7 @@ Battery-powered e-ink picture frame that wakes once per day, updates the display
 - **Product page**: https://www.waveshare.com/esp32-s3-photopainter.htm
 - **Wiki**: https://www.waveshare.com/wiki/ESP32-S3-PhotoPainter
 - **Waveshare repo**: https://github.com/waveshareteam/ESP32-S3-PhotoPainter
-- **Schematic**: linked from wiki page
+- **Schematic**: `hardware/ESP32-S3-PhotoPainter-Schematic.pdf` (also at https://files.waveshare.com/wiki/ESP32-S3-PhotoPainter/ESP32-S3-PhotoPainter-Schematic.pdf)
 
 ### Key Components
 
@@ -28,17 +28,28 @@ Battery-powered e-ink picture frame that wakes once per day, updates the display
 
 ### GPIO Pin Mapping
 
-| Function | GPIO Pin |
-|----------|----------|
-| SPI MOSI (EPD) | 11 |
-| SPI CLK (EPD) | 10 |
-| EPD CS | 9 |
-| EPD DC | 8 |
-| EPD RST | 12 |
-| EPD BUSY | 13 |
-| EPD PWR | 6 |
-| I2C SDA | 47 |
-| I2C SCL | 48 |
+| Function | GPIO Pin | Notes |
+|----------|----------|-------|
+| SPI MOSI (EPD) | 11 | |
+| SPI CLK (EPD) | 10 | |
+| EPD CS | 9 | |
+| EPD DC | 8 | |
+| EPD RST | 12 | |
+| EPD BUSY | 13 | Active LOW — poll until HIGH |
+| RTC_INT (PCF85063) | 6 | Direct GPIO, NOT through TG28. Use as EXT0/EXT1 deep-sleep wakeup source |
+| I2C SDA | 47 | Shared by TG28, PCF85063, SHTC3, ES8311, ES7210 |
+| I2C SCL | 48 | |
+| AXP_IRQ (TG28) | 21 | TG28 interrupt output |
+| SYS_OUT (TG28) | 5 | AXP2101 system power indicator |
+| CHGLED | 3 | Charging LED indicator |
+| SD_CS / D3 | 38 | 4-bit SDIO |
+| SD_CLK | 39 | 4-bit SDIO |
+| SD_D0 / MISO | 40 | 4-bit SDIO |
+| SD_CMD / MOSI | 41 | 4-bit SDIO |
+| SD_D1 | 1 | 4-bit SDIO (via 0Ω R60) |
+| SD_D2 | 2 | 4-bit SDIO (via 0Ω R59) |
+
+**EPD power**: Supplied by TG28 ALDO3 rail (enable/disable via I2C). No dedicated EPD_PWR GPIO.
 
 ### I2C Bus Devices
 
@@ -52,7 +63,9 @@ Battery-powered e-ink picture frame that wakes once per day, updates the display
 
 - **TG28 PMIC**: Register-compatible with AXP2101 (confirmed 2026-02-21). Chip ID reg 0x03 = 0x4A (AXP2101 = 0x47). Register read/write tests passed across 0x00–0x41. Plan: port aitjcize AXP2101 C++ driver to pure C, patch chip ID check to also accept 0x4A. XPowersLib `begin()` will reject 0x4A — avoid using it directly.
 - **The TG28 fixes the AXP2101 dual-power bug**: can safely use USB-C and battery simultaneously.
-- **EPD power pin (GPIO 6)**: must be driven high to power the e-paper display. Ensure this is set before SPI comms.
+- **EPD power**: Controlled by TG28 ALDO3 rail via I2C — enable ALDO3 before SPI comms, disable after display sleeps. There is NO dedicated EPD_PWR GPIO (earlier notes saying GPIO6=EPD_PWR were incorrect).
+- **Wakeup path**: PCF85063 INT → **GPIO6 directly** (not through TG28). Deep sleep wakeup source = EXT0/EXT1 on GPIO6. The aitjcize firmware assumed wakeup via AXP2101 IRQ — schematic confirms this is wrong for our board.
+- **SD card interface**: **4-bit SDIO** (not SPI). Use ESP-IDF SDMMC driver with GPIO38/39/40/41/1/2.
 - **Download mode**: hold BOOT button + press PWR to enter download mode if device not detected on USB.
 
 ## Development Environment

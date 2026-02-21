@@ -4,6 +4,65 @@ Completed work, findings, and session notes. Newest entries at the top.
 
 ---
 
+## 2026-02-21 — Phase 1: Schematic pulled and analysed
+
+Downloaded schematic PDF (`hardware/ESP32-S3-PhotoPainter-Schematic.pdf`) from Waveshare wiki.
+Rendered and cropped all sections for reference (see `hardware/schematic-*.png`).
+
+### Key findings — corrects earlier assumptions
+
+**GPIO6 = RTC_INT, NOT EPD_PWR**
+PCF85063 INT pin routes directly to ESP32-S3 GPIO6. There is no EPD_PWR GPIO.
+EPD power comes from TG28 ALDO3 (I2C-controlled LDO). To power the EPD: enable ALDO3 via I2C.
+Earlier CLAUDE.md entry "EPD power pin (GPIO 6)" was incorrect — now fixed.
+
+**Wakeup path is direct: PCF85063 → GPIO6 → ESP32**
+The aitjcize firmware assumed: PCF85063 → AXP2101 IRQ → ESP32-S3. The schematic shows
+PCF85063 INT goes directly to GPIO6, with no TG28 in the path. Deep sleep wakeup source
+must be EXT0/EXT1 on GPIO6, not GPIO21 (which is AXP_IRQ, a separate signal).
+
+**SD card is 4-bit SDIO (not SPI)**
+All 6 SD signals are routed to ESP32 GPIOs. D1 and D2 are connected via fitted 0Ω resistors.
+
+### Complete GPIO map (from schematic)
+
+| Signal | GPIO | Notes |
+|--------|------|-------|
+| EPD_DC | 8 | |
+| EPD_CS | 9 | |
+| EPD_SCK | 10 | |
+| EPD_DIN | 11 | |
+| EPD_RST | 12 | |
+| EPD_BUSY | 13 | Active LOW |
+| RTC_INT | 6 | PCF85063 INT → GPIO6 direct |
+| AXP_IRQ | 21 | TG28 IRQ → GPIO21 |
+| SYS_OUT | 5 | TG28 SYS power output indicator |
+| CHGLED | 3 | Charging LED |
+| I2C SDA | 47 | Shared bus: TG28 + PCF85063 + SHTC3 + audio |
+| I2C SCL | 48 | |
+| SD_CS/D3 | 38 | 4-bit SDIO |
+| SD_CLK | 39 | 4-bit SDIO |
+| SD_D0 | 40 | 4-bit SDIO |
+| SD_CMD | 41 | 4-bit SDIO |
+| SD_D1 | 1 | 4-bit SDIO (0Ω R60) |
+| SD_D2 | 2 | 4-bit SDIO (0Ω R59) |
+
+### TG28 PMIC ALDO assignments (from schematic)
+
+| Rail | Output | Notes |
+|------|--------|-------|
+| ALDO2 | Audio_VCC | Audio subsystem power |
+| ALDO3 | EPD_VCC | EPD power — must enable before display use |
+| DC1 | 3.3V (VCC3V3) | Main system rail — must stay on |
+
+### Resolved open questions from TODO/PROGRESS
+
+- **PCF85063 INTB wiring**: Direct to GPIO6 (not through TG28) ✓
+- **SD card interface**: 4-bit SDIO on GPIO38/39/40/41/1/2 ✓
+- **EPD_PWR GPIO**: Does not exist — EPD powered by TG28 ALDO3 ✓
+
+---
+
 ## 2026-02-21 — Phase 1 bring-up: extended register probe + write test
 
 ### I2C hang root cause identified and fixed

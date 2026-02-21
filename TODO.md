@@ -12,11 +12,11 @@ Move completed items to PROGRESS.md.
 - [x] Read TG28 chip ID (reg 0x03) — returned 0x4A (not 0x47; register-compatible confirmed)
 - [x] Extended register probe (14 regs 0x00–0x41) — all readable, no hangs
 - [x] Register write test (IRQ_EN_1 0x40) — write/readback/restore PASS
-- [ ] Pull schematic from Waveshare wiki — determine:
-  - Is PCF85063 INTB wired to TG28 IRQ input or directly to an ESP32-S3 GPIO?
-  - Is SD card wired as SDIO (CMD/CLK/D0-D3) or SPI (MOSI/MISO/CLK/CS)?
-- [ ] Verify GPIO 6 (EPD PWR) high → EPD BUSY pin changes state
-- [ ] Mount SD card (correct interface per schematic finding), list root directory
+- [x] Pull schematic from Waveshare wiki — determine:
+  - PCF85063 INTB → **GPIO6 directly** (not through TG28)
+  - SD card → **4-bit SDIO** (GPIO38/39/40/41/1/2)
+- [ ] Verify EPD power: enable TG28 ALDO3 via I2C → confirm EPD BUSY pin changes state
+- [ ] Mount SD card (4-bit SDIO: GPIO38/39/40/41/1/2), list root directory
 
 ## Phase 2 — PMIC Driver (pure C)
 
@@ -27,7 +27,7 @@ logic to pure C; patch chip ID check to accept 0x4A in addition to 0x47.
 - [ ] Implement pmic_sleep(): disable non-essential rails, keep DC1 (3.3V system)
   - Disable: DC2–5, ALDO1–2, BLDO1–2, CPUSLDO, DLDO1–2, ALDO3, ALDO4
   - Keep: DC1 (3.3V) — adapt register values from aitjcize axp2101_basic_sleep_start
-- [ ] Verify wakeup chain from schematic: PCF85063 INTB → TG28 IRQ → ESP32-S3 or direct GPIO
+- [x] Verify wakeup chain from schematic: PCF85063 INTB → **GPIO6 directly** (confirmed from schematic)
 
 ## Phase 3 — EPD Driver
 
@@ -72,8 +72,8 @@ must implement from scratch using PCF85063 datasheet registers 0x0B–0x0F.
   - 0x0E: day alarm (AEN bit 7)
   - 0x0F: weekday alarm (AEN bit 7)
   - Clear alarm flag in Control_2 (reg 0x01, AF bit)
-- [ ] Determine wakeup GPIO from schematic (PCF85063 INTB → TG28 or direct ESP32-S3 GPIO)
-- [ ] Implement deep sleep with correct wakeup source (EXT0 or EXT1 on wakeup GPIO)
+- [x] Determine wakeup GPIO from schematic: **GPIO6** (PCF85063 INT direct, confirmed)
+- [ ] Implement deep sleep with EXT0/EXT1 wakeup on GPIO6 (PCF85063 INT, active LOW)
 - [ ] Implement TG28 sleep sequence in C (adapt aitjcize axp2101_basic_sleep_start logic)
 - [ ] Test: set 60s alarm, enter deep sleep, verify wakeup and alarm cause logged
 - [ ] Persist image index in RTC fast memory (8KB, survives deep sleep)
