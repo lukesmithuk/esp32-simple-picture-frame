@@ -4,6 +4,34 @@ Completed work, findings, and session notes. Newest entries at the top.
 
 ---
 
+## 2026-02-21 — Phase 1 bring-up: I2C scan results
+
+### I2C scan results (SDA=47, SCL=48, 100 kHz)
+
+| Address | Device | Status |
+|---------|--------|--------|
+| 0x18 | ES8311 audio DAC | Found (expected — on-board audio, not needed for this project) |
+| 0x34 | TG28 PMIC | Found ✓ |
+| 0x40 | ES7210 microphone ADC | Found (expected — on-board audio, not needed) |
+| 0x51 | PCF85063 RTC | Found ✓ |
+| 0x70 | SHTC3 temp/humidity | Found ✓ |
+
+Two `probe device timeout` warnings from IDF during scan — normal for devices that do clock stretching on address probe. All expected devices still detected.
+
+### TG28 chip ID: **0x4A** (NOT 0x47)
+
+Register 0x03 returned `0x4A`. AXP2101 returns `0x47`. The TG28 is **not** AXP2101-compatible.
+
+This means:
+- XPowersLib cannot be used, even as a reference implementation
+- All PMIC register writes must be skipped unless/until the TG28 register map is found
+- Minimal fallback: skip PMIC entirely; EPD power is on GPIO 6 (independent of PMIC)
+- Battery status, charging control, and regulated rail control are unavailable for now
+
+Next steps for PMIC: search for TG28 datasheet or any community reverse-engineering. The chip ID `0x4A` is not found in any known open-source PMIC library.
+
+---
+
 ## 2026-02-21 — Reference firmware deep-dive
 
 Deep read of aitjcize/esp32-photoframe and waveshareteam/ESP32-S3-PhotoPainter (latest Jan 2026).
