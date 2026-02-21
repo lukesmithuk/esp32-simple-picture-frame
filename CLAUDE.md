@@ -132,15 +132,18 @@ python3 flash.py [--port /dev/ttyACM0] [--baud 460800] [--no-monitor]
 
 #### `monitor.py`
 
-Minimal serial monitor using PySerial.  Resets the chip via RTS, waits 2 s for
-boot, then streams output to stdout until Ctrl-C or a timeout.
+Minimal serial monitor using PySerial.  Attaches to the running chip without
+resetting it (default), then streams output to stdout until Ctrl-C or a timeout.
 
 ```
-python3 monitor.py [--port /dev/ttyACM0] [--baud 115200] [--timeout N] [--no-reset]
+python3 monitor.py [--port /dev/ttyACM0] [--baud 115200] [--timeout N] [--reset]
 ```
 
 - `--timeout N` — stop after N seconds (0 = run until Ctrl-C, the default).
-- `--no-reset` — attach without toggling RTS; useful after `flash.py --no-monitor`.
+- `--reset` — toggle RTS to reset the chip before monitoring.  **WARNING**: the
+  bare RTS toggle can leave the I2C bus in a bad state on this board.  Prefer
+  `python3 flash.py` (esptool reset + immediate attach) when you need a clean
+  boot capture.
 - Raw bytes are written to stdout, so IDF ANSI log colours are preserved.
 - Pipe to `cat` or redirect to a file to capture output non-interactively.
 

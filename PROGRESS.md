@@ -132,6 +132,11 @@ All 6 SD signals are routed to ESP32 GPIOs. D1 and D2 are connected via fitted 0
 
 ### I2C hang root cause identified and fixed
 
+> **[SUPERSEDED]** The analysis below was the working theory at the time.  Later testing
+> (same session) showed the hang was entirely a `monitor.py` RTS-reset tooling artifact —
+> not a firmware bug.  See the entry at the top of this file for the correct diagnosis.
+> `wait_all_done` per-call was subsequently removed; persistent handle alone is sufficient.
+
 The I2C bus was hanging on every read after `i2c_master_probe()` scanned the bus.
 Root cause: `i2c_master_probe()` leaves async state on the bus. Fix (from aitjcize
 and multiverse2011 reference projects):
