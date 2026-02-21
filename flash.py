@@ -60,8 +60,8 @@ def main():
     Flashing sequence:
       1. Read flash arguments from build/flash_args.
       2. Run esptool with hard-reset before and after flashing.
-      3. Unless --no-monitor is given, exec monitor.py with --no-reset so the
-         chip's post-flash output is captured without an extra reset pulse.
+      3. Unless --no-monitor is given, exec monitor.py (no-reset is the default)
+         so the chip's post-flash output is captured without an extra reset pulse.
 
     Typical usage::
 
@@ -102,7 +102,7 @@ def main():
         monitor_script = os.path.join(os.path.dirname(__file__), "monitor.py")
         print(f"[flash] Starting monitor on {args.port}...")
         os.execv(sys.executable, [sys.executable, monitor_script,
-                                   "--port", args.port, "--no-reset"])
+                                   "--port", args.port])
 
 
 if __name__ == "__main__":

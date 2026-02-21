@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 """
 Serial monitor for ESP32 bring-up.
-Resets the chip via DTR/RTS, then prints output until Ctrl-C or --timeout seconds.
+Attaches to the running chip and prints output until Ctrl-C or --timeout seconds.
+Does NOT reset the chip by default — pass --reset to trigger an RTS reset first.
 
 Usage:
-    python3 monitor.py [--port /dev/ttyACM0] [--baud 115200] [--timeout 60]
+    python3 monitor.py [--port /dev/ttyACM0] [--baud 115200] [--timeout 60] [--reset]
+
+WARNING: --reset uses a bare RTS toggle which can leave the I2C bus in a bad state
+on this board.  Prefer 'python3 flash.py' (esptool reset + immediate attach) when
+you need a clean boot capture.
 """
 
 import argparse
@@ -16,10 +21,12 @@ import signal
 def main():
     """Entry point: open serial port, optionally reset the chip, print output.
 
-    Reset sequence (unless --no-reset):
+    Reset sequence (only when --reset is given):
       - Assert RTS (EN pin low) for 100 ms, then deassert — this triggers the
         ESP32-S3 reset.  DTR is held low throughout to avoid spurious boot-mode
         entry.  A 2-second settle delay follows before reading begins.
+      - WARNING: this bare RTS toggle can leave the I2C bus in a bad state on
+        this board.  Use 'python3 flash.py' for a clean boot capture instead.
 
     Output loop:
       - Reads up to 4096 bytes per iteration, writes raw bytes to stdout so
@@ -29,22 +36,22 @@ def main():
 
     Typical usage::
 
-        python3 monitor.py                        # run until Ctrl-C
-        python3 monitor.py --timeout 30           # capture 30 s of output
-        python3 monitor.py --no-reset --timeout 5 # attach without resetting
+        python3 monitor.py                   # attach without resetting (default)
+        python3 monitor.py --timeout 30      # capture 30 s of output
+        python3 monitor.py --reset           # reset chip first (see WARNING above)
     """
     parser = argparse.ArgumentParser(description="ESP32 serial monitor")
     parser.add_argument("--port",    default="/dev/ttyACM0")
     parser.add_argument("--baud",    type=int, default=115200)
     parser.add_argument("--timeout", type=float, default=0,
                         help="Stop after N seconds (0 = run until Ctrl-C)")
-    parser.add_argument("--no-reset", action="store_true",
-                        help="Don't reset chip on connect")
+    parser.add_argument("--reset", action="store_true",
+                        help="Reset chip via RTS before monitoring (see WARNING in module docstring)")
     args = parser.parse_args()
 
     s = serial.Serial(args.port, args.baud, timeout=0.05)
 
-    if not args.no_reset:
+    if args.reset:
         # Toggle RTS to reset the ESP32
         s.dtr = False
         s.rts = True
