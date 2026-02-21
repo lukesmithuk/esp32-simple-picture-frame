@@ -15,14 +15,17 @@ Arduino abstractions add overhead and hide the register-level control needed for
 
 ---
 
-## ADR-002: Language — C
+## ADR-002: Language — C with C++ permitted where it saves significant work
 
-**Decision**: Implement in C (not C++).
+**Decision**: Primary language is C. C++ is permitted where it saves significant work, specifically
+for porting existing C++ components (e.g. XPowersLib / aitjcize's axp2101.cpp for PMIC control).
 
 **Rationale**: Developer preference (20+ years C experience). ESP-IDF is a C-native ecosystem.
-No object-oriented requirements that justify C++ complexity overhead.
+No object-oriented requirements that justify C++ complexity overhead in new code. However,
+forcing a rewrite of well-tested C++ libraries (like XPowersLib) to pure C is unnecessary
+churn — ESP-IDF supports mixed C/C++ projects natively.
 
-**Status**: Decided
+**Status**: Decided (updated during Phase 1 bring-up)
 
 ---
 
@@ -31,11 +34,15 @@ No object-oriented requirements that justify C++ complexity overhead.
 **Decision**: Use Floyd-Steinberg error diffusion dithering against a *measured* Spectra 6 palette
 (actual RGB values of pigments as rendered by the panel), not theoretical RGB values.
 
-**Rationale**: The aitjcize/esp32-photoframe project demonstrated significantly better visual results
-using the measured palette. Theoretical pure-RGB values produce washed-out dithering because the
-e-ink panel renders colours darker/more muted than their sRGB equivalents.
+**Rationale**: The Waveshare official Jan 2026 code uses theoretical pure-sRGB palette
+`{0,0,0}, {255,255,255}, {255,0,0}, {0,255,0}, {0,0,255}, {255,255,0}`. The aitjcize project
+documents that this produces inferior results vs. a palette measured off the actual panel.
+Must locate measured values in aitjcize epaper component or measure directly.
 
-**Status**: Proposed — measured palette values TBD (source from aitjcize or measure directly)
+**Note**: Waveshare's FS dithering working buffer bug: `malloc()` for 1.15 MB (800×480×3) will
+fail silently or crash. Must use `heap_caps_malloc(MALLOC_CAP_SPIRAM)` instead.
+
+**Status**: Proposed — measured palette values still TBD; source from aitjcize epaper component
 
 ---
 
@@ -71,7 +78,17 @@ the internal ULP timer.
 The PCF85063 has a dedicated backup battery header and maintains time/alarms independently of
 the main supply. Enables true daily-at-fixed-time scheduling.
 
-**Status**: Proposed — depends on PCF85063 INTB → GPIO wakeup wiring (verify from schematic)
+**Implementation detail**: The aitjcize firmware wakes the ESP32-S3 via the AXP2101/TG28 IRQ pin,
+not a direct PCF85063 INTB → GPIO connection. The likely path is:
+`PCF85063 INTB → AXP2101 IRQ input → AXP2101 PWROK/IRQ output → ESP32-S3 wakeup pin`.
+If the TG28 is not AXP2101-compatible, this chain breaks. An alternative is a direct wire
+from PCF85063 INTB to a free ESP32-S3 GPIO configured as EXT0/EXT1 wakeup source.
+Must verify from schematic before choosing approach.
+
+**Also**: The aitjcize PCF85063 driver does NOT implement alarm registers. Alarm support (registers
+0x0B–0x0F, each with AEN bit) must be written from scratch regardless of which wakeup path is used.
+
+**Status**: Proposed — schematic verification required for wakeup pin routing
 
 ---
 
@@ -80,20 +97,68 @@ the main supply. Enables true daily-at-fixed-time scheduling.
 **Decision**: Defer PMIC-dependent code until TG28 register map is confirmed.
 
 **Rationale**: No public TG28 datasheet. Board has TG28, not AXP2101. Reading chip ID register
-0x03 will confirm compatibility. Until then, avoid assumptions; use GPIO 6 (EPD PWR) for display
-power, which is independent of the PMIC.
+0x03 will confirm compatibility. The Waveshare Jan 2026 firmware update added NO TG28 support —
+it remains entirely unaddressed in all known open-source firmware.
+
+If TG28 is not register-compatible: minimal approach is to skip all PMIC register writes
+and rely on the hardware default power state. The EPD power is controlled by GPIO 6, not the PMIC,
+so EPD operation is PMIC-independent. Battery status/charging will be unavailable.
+
+The aitjcize AXP2101 driver uses XPowersLib (C++). Even if TG28 is compatible, the C++ dependency
+means we need to re-implement the key PMIC functions in C (init, sleep, shutdown) referencing
+the XPowersAXP2101.tpp template as a register-map guide.
 
 **Status**: Blocked — requires hardware verification (Phase 1)
 
 ---
 
-## ADR-008: Reference firmware — aitjcize/esp32-photoframe
+## ADR-008: Reference firmware — aitjcize/esp32-photoframe + Waveshare Jan 2026
 
-**Decision**: Use aitjcize/esp32-photoframe as the primary code reference for EPD driver, dithering,
-and deep sleep patterns. Use Waveshare demo for hardware init sequences.
+**Decision**: Use both references for different subsystems:
+- **aitjcize**: component structure, board HAL pattern, PCF85063 driver (adapt), PMIC sleep logic
+- **Waveshare Jan 2026**: EPD init byte sequence (authoritative), image decode pipeline (adapt)
 
-**Rationale**: aitjcize is the most complete open-source implementation for this exact hardware
-(modulo TG28). Waveshare demo is authoritative for panel init sequences but minimal in application
-logic.
+**Rationale**: After reading source code, the split is clear:
+- aitjcize has clean ESP-IDF component architecture and good sleep/wakeup patterns but its PMIC
+  driver is C++ (XPowersLib) and its PCF85063 driver lacks alarm support.
+- Waveshare Jan 2026 has the authoritative EPD init sequence and working JPG/PNG/BMP decode with
+  scaling and FS dithering — but uses theoretical palette and has a PSRAM allocation bug.
+- Neither source handles TG28 at all.
+
+**Status**: Decided (refined after source code review)
+
+---
+
+## ADR-009: JPEG decoder — esp_jpeg (ESP-IDF built-in)
+
+**Decision**: Use `esp_jpeg` component (`esp_jpeg_decode_one_picture()`) for JPEG decoding.
+
+**Rationale**: Confirmed in Waveshare Jan 2026 firmware. Already in ESP-IDF, no external dependency,
+outputs RGB888. Tested on this hardware class.
 
 **Status**: Decided
+
+---
+
+## ADR-010: Image scaling — bilinear interpolation, fixed-point
+
+**Decision**: Use bilinear interpolation for resize (not nearest-neighbour).
+
+**Rationale**: Waveshare's `ImgDecode_ScaleRgb888Nearest` is actually bilinear despite its name
+(uses 4-neighbour weighted average with fixed-point ×1024 arithmetic). Quality is materially better
+than true nearest-neighbour for e-ink where dithering amplifies blocky scaling artefacts.
+The fixed-point implementation is fast enough without floating-point.
+
+**Status**: Decided
+
+---
+
+## ADR-011: SD card interface — verify SDIO vs SPI
+
+**Decision**: Pending — verify from schematic and board HAL pin definitions.
+
+**Rationale**: aitjcize board HAL references SDIO pins (CLK, CMD, D0–D3). Waveshare demo may use
+SPI-mode SD. Our project should use whichever the hardware is wired for. If SDIO, use
+`sdmmc_host_t` with `SDMMC_HOST_DEFAULT()`; if SPI, use `esp_vfs_fat` + SPI SD driver.
+
+**Status**: Blocked — verify from schematic

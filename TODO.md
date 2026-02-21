@@ -12,40 +12,67 @@ Move completed items to PROGRESS.md.
 
 ## Phase 1 — Hardware Bring-Up
 
-- [ ] Flash I2C scan, record which addresses respond
-- [ ] Read TG28 register 0x03 — document returned chip ID
-- [ ] If TG28 ≠ AXP2101 compatible: research TG28 register map, open issue
+- [ ] Flash I2C scan, record which addresses respond (expect 0x34, 0x51, 0x70)
+- [ ] Read TG28 register 0x03 — document returned chip ID (0x47 = AXP2101 compatible)
+- [ ] If TG28 ≠ 0x47: note actual value, decide minimal PMIC approach (see ADR-007)
 - [ ] Confirm PCF85063 RTC responds at 0x51
 - [ ] Confirm SHTC3 responds at 0x70
-- [ ] Verify GPIO 6 (EPD PWR) high → EPD powers on (check BUSY pin behaviour)
-- [ ] Mount SD card via `esp_vfs_fat`, list root directory
-- [ ] Pull schematic from Waveshare wiki — verify PCF85063 INTB wiring to ESP32-S3 GPIO
+- [ ] Pull schematic from Waveshare wiki — determine:
+  - Is PCF85063 INTB wired to AXP2101/TG28 IRQ input or directly to an ESP32-S3 GPIO?
+  - Is SD card wired as SDIO (CMD/CLK/D0-D3) or SPI (MOSI/MISO/CLK/CS)?
+- [ ] Verify GPIO 6 (EPD PWR) high → EPD BUSY pin changes state
+- [ ] Mount SD card (correct interface per schematic finding), list root directory
 
 ## Phase 2 — EPD Driver
 
-- [ ] Port / adapt EPD init sequence from Waveshare demo
-- [ ] Implement SPI send for full-frame buffer
-- [ ] Test: display a solid-colour frame (all-black, all-white)
-- [ ] Test: display a hardcoded 2-colour checkerboard
-- [ ] Implement panel sleep command
-- [ ] Measure EPD refresh time with stopwatch (baseline)
+Init sequence and pixel format are now fully known from Waveshare Jan 2026 source (see PROGRESS.md).
+
+- [ ] Implement SPI init: MOSI=11, CLK=10, CS=9, DC=8, RST=12, BUSY=13, 40 MHz, half-duplex
+- [ ] Implement EPD reset: RST high 50ms → low 20ms → high 50ms
+- [ ] Implement EPD init sequence (exact bytes in PROGRESS.md)
+- [ ] Implement BUSY wait: poll GPIO 13 until HIGH (active low, returns when idle)
+- [ ] Implement frame send: cmd 0x10 → DMA send 192,000 bytes → display refresh sequence
+- [ ] Implement display refresh: 0x04 → wait → 0x06+data → 0x12 00 → wait → 0x02 00 → wait
+- [ ] Implement panel sleep command (verify command byte from Waveshare source)
+- [ ] Test: all-white frame (index=1 packed: 0x11 repeated)
+- [ ] Test: all-black frame (index=0 packed: 0x00 repeated)
+- [ ] Test: solid colour for each of the 6 palette colours
+- [ ] Measure EPD refresh time with stopwatch (expect ~30s)
 
 ## Phase 3 — Image Pipeline
 
-- [ ] Obtain measured Spectra 6 palette RGB values (from aitjcize repo or self-measured)
-- [ ] Implement Floyd-Steinberg dithering in C
-- [ ] Write unit test for dithering (feed synthetic gradient, check output palette indices)
-- [ ] Integrate JPEG decoder component (evaluate `esp_jpeg` vs libjpeg-turbo)
-- [ ] Implement resize/crop to 800×480 (nearest-neighbour first, lanczos later if needed)
-- [ ] End-to-end test: put a JPEG on SD, render it on EPD
+- [ ] Find measured Spectra 6 palette in aitjcize epaper component (search `components/epaper/`)
+- [ ] Implement Floyd-Steinberg dithering in C against measured palette
+  - Working buffer MUST be `heap_caps_malloc(MALLOC_CAP_SPIRAM)` — 800×480×3 = 1.15 MB
+  - Input: RGB888 buffer; output: 4bpp packed EPD buffer
+- [ ] Write host-side unit test (Linux): feed synthetic gradient, write PPM for visual check
+- [ ] Add `esp_jpeg` component to project (ESP-IDF built-in, no external dep needed)
+- [ ] Implement JPEG decode: `esp_jpeg_decode_one_picture()` → RGB888 in PSRAM
+- [ ] Implement bilinear scale (fixed-point ×1024, 4-neighbour) to fit 800×480
+  - Handle landscape (scale to 800×480) and portrait (scale to 480×800, rotate)
+- [ ] Define portrait image policy: letterbox with white bars, or crop-to-fill
+- [ ] End-to-end test: JPEG on SD → decode → scale → dither → EPD display
 
 ## Phase 4 — Wake / Sleep
 
-- [ ] Implement PCF85063 alarm set/clear
-- [ ] Implement deep sleep entry (esp_deep_sleep_start)
-- [ ] Test: device wakes from RTC alarm, logs timestamp, sleeps again
-- [ ] Persist image index in RTC fast memory (survives deep sleep)
-- [ ] Handle first-boot (RTC memory uninitialised)
+PCF85063 time read/write is available from aitjcize (port pcf85063.c). Alarm support is not —
+must implement from scratch using PCF85063 datasheet register map 0x0B–0x0F.
+
+- [ ] Port aitjcize pcf85063.c (time read/write, OSF check) — pure C, new i2c_master API
+- [ ] Implement PCF85063 alarm registers:
+  - 0x0B: seconds alarm (AEN bit 7)
+  - 0x0C: minutes alarm (AEN bit 7)
+  - 0x0D: hours alarm (AEN bit 7)
+  - 0x0E: day alarm (AEN bit 7)
+  - 0x0F: weekday alarm (AEN bit 7)
+  - Clear alarm flag in Control_2 (reg 0x01, AF bit)
+- [ ] Determine wakeup GPIO from schematic (PCF85063 INTB → AXP2101 or direct ESP32-S3 GPIO)
+- [ ] Implement deep sleep with correct wakeup source (EXT0 or EXT1 on wakeup GPIO)
+- [ ] Implement TG28/PMIC sleep sequence in C (adapt aitjcize axp2101_basic_sleep_start logic):
+  - Only if TG28 confirmed AXP2101-compatible; otherwise skip PMIC writes
+- [ ] Test: set 60s alarm, enter deep sleep, verify wakeup and alarm cause logged
+- [ ] Persist image index in RTC fast memory (8KB, survives deep sleep)
+- [ ] Handle first-boot: RTC RAM magic word check to detect uninitialised state
 
 ## Phase 5 — WiFi (deferred)
 
