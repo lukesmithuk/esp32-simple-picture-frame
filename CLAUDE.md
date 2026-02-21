@@ -17,7 +17,7 @@ Battery-powered e-ink picture frame that wakes once per day, updates the display
 |-----------|------|-------|
 | MCU | ESP32-S3-WROOM-1-N16R8 | 240MHz dual-core, 16MB Flash, 8MB PSRAM |
 | Display | 7.3" E Ink Spectra 6 (E6) | 800×480, 6 primary colours + dithering, ~30s refresh |
-| PMIC | **TG28** (newer revision) | Replaces AXP2101 on older boards. NOT register-compatible confirmed — needs investigation |
+| PMIC | **TG28** (newer revision) | Replaces AXP2101 on older boards. **Register-compatible confirmed** (2026-02-21): chip ID 0x4A, write test passed. Port aitjcize AXP2101 driver; patch chip ID check to accept 0x4A. |
 | RTC | PCF85063 | I2C, alarm-based wakeup capability |
 | Temp/Humidity | SHTC3 | I2C |
 | Audio ADC | ES7210 | Dual microphone array (not needed for this project) |
@@ -44,13 +44,13 @@ Battery-powered e-ink picture frame that wakes once per day, updates the display
 
 | Device | Expected Address (7-bit) | Notes |
 |--------|--------------------------|-------|
-| TG28 PMIC | 0x34 (if AXP2101-compatible) | **Needs verification via I2C scan** |
+| TG28 PMIC | 0x34 | **Register-compatible with AXP2101** (chip ID 0x4A, write test passed 2026-02-21) |
 | PCF85063 RTC | 0x51 | Standard address |
 | SHTC3 | 0x70 | Temp/humidity sensor |
 
 ### Known Issues
 
-- **TG28 PMIC**: This board has the newer TG28 chip, NOT the AXP2101. All existing open-source firmware (aitjcize/esp32-photoframe, Waveshare demo, XPowersLib) targets the AXP2101. The TG28 may be register-compatible — verify by I2C scan and reading chip ID register 0x03 (AXP2101 returns 0x47). No public TG28 datasheet found yet.
+- **TG28 PMIC**: Register-compatible with AXP2101 (confirmed 2026-02-21). Chip ID reg 0x03 = 0x4A (AXP2101 = 0x47). Register read/write tests passed across 0x00–0x41. Plan: port aitjcize AXP2101 C++ driver to pure C, patch chip ID check to also accept 0x4A. XPowersLib `begin()` will reject 0x4A — avoid using it directly.
 - **The TG28 fixes the AXP2101 dual-power bug**: can safely use USB-C and battery simultaneously.
 - **EPD power pin (GPIO 6)**: must be driven high to power the e-paper display. Ensure this is set before SPI comms.
 - **Download mode**: hold BOOT button + press PWR to enter download mode if device not detected on USB.

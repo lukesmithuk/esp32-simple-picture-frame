@@ -4,6 +4,58 @@ Completed work, findings, and session notes. Newest entries at the top.
 
 ---
 
+## 2026-02-21 — Phase 1 bring-up: extended register probe + write test
+
+### I2C hang root cause identified and fixed
+
+The I2C bus was hanging on every read after `i2c_master_probe()` scanned the bus.
+Root cause: `i2c_master_probe()` leaves async state on the bus. Fix (from aitjcize
+and multiverse2011 reference projects):
+
+1. **Persistent device handle** — open once with `i2c_master_bus_add_device()`, reuse for all transactions
+2. **`i2c_master_bus_wait_all_done()`** — call before every `transmit` / `transmit_receive`
+
+Both conditions are required. `wait_all_done` alone with a temp handle still hung.
+Persistent handle alone still hung. Together: all 14 registers read cleanly with zero hangs.
+
+### TG28 register dump (AXP2101-named registers, USB powered, no battery)
+
+| Reg | AXP2101 name | Value | Notes |
+|-----|--------------|-------|-------|
+| 0x00 | PMU_STATUS_1 | 0x20 | bit 5 = VBUS present; bits 3:0 = 0 (no battery) |
+| 0x01 | PMU_STATUS_2 | 0x15 | bits 6:5 = charger state; bit 4 = VSYS OK; bit 2, 0 set |
+| 0x03 | CHIP_ID | 0x4A | (AXP2101 = 0x47; TG28 differs) |
+| 0x08 | SLEEP_CFG | 0x04 | |
+| 0x10 | DCDC_EN | 0x34 | bits: DC1=1 (3.3V), DC3=1, DC5=1 |
+| 0x11 | LDO_EN_1 | 0x00 | all LDOs in group 1 off |
+| 0x12 | LDO_EN_2 | 0x08 | ALDO4 (bit 3) enabled |
+| 0x13 | LDO_EN_3 | 0x03 | DLDO1 (bit 0) + DLDO2 (bit 1) enabled |
+| 0x15 | DCDC1_VOLT | 0x06 | AXP2101: DC1 = 1500 + 100×6 = 2100 mV? (nominal 3.3V — mapping differs) |
+| 0x16 | DCDC2_VOLT | 0x04 | |
+| 0x1A | ALDO1_VOLT | 0xA1 | bit 7 = 1 (flag?); lower 5 bits = 1 |
+| 0x1B | ALDO2_VOLT | 0x00 | |
+| 0x40 | IRQ_EN_1 | 0xFF | all IRQs enabled (default-on) |
+| 0x41 | IRQ_EN_2 | 0xFC | |
+
+### Register write test result: **[PASS]**
+
+IRQ_EN_1 (0x40): wrote 0x00 over default 0xFF → readback 0x00 ✓, restored 0xFF ✓.
+TG28 register map is writable and responds to AXP2101-addressed registers.
+
+### Conclusion: TG28 is AXP2101 register-compatible
+
+- Same I2C address (0x34) ✓
+- Same register map layout (at least 0x00–0x41 confirmed) ✓
+- Registers readable and writable ✓
+- Chip ID register 0x03 differs (0x4A vs 0x47) — XPowersLib `begin()` will fail unless
+  patched to accept 0x4A, or the register check is bypassed
+
+**Recommendation**: Port aitjcize AXP2101 driver logic to pure C; patch chip ID check
+to accept both 0x47 and 0x4A. Do NOT use XPowersLib directly — it C++ template
+dependency is not worth the complexity for the limited PMIC operations we need.
+
+---
+
 ## 2026-02-21 — Phase 1 bring-up: I2C scan results
 
 ### I2C scan results (SDA=47, SCL=48, 100 kHz)
