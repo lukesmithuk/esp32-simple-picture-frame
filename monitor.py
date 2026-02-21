@@ -14,6 +14,25 @@ import sys
 import signal
 
 def main():
+    """Entry point: open serial port, optionally reset the chip, print output.
+
+    Reset sequence (unless --no-reset):
+      - Assert RTS (EN pin low) for 100 ms, then deassert — this triggers the
+        ESP32-S3 reset.  DTR is held low throughout to avoid spurious boot-mode
+        entry.  A 2-second settle delay follows before reading begins.
+
+    Output loop:
+      - Reads up to 4096 bytes per iteration, writes raw bytes to stdout so
+        ANSI escape codes (IDF log colours) are preserved.
+      - Exits on Ctrl-C or when --timeout seconds have elapsed.
+      - A timeout of 0 (default) runs until Ctrl-C.
+
+    Typical usage::
+
+        python3 monitor.py                        # run until Ctrl-C
+        python3 monitor.py --timeout 30           # capture 30 s of output
+        python3 monitor.py --no-reset --timeout 5 # attach without resetting
+    """
     parser = argparse.ArgumentParser(description="ESP32 serial monitor")
     parser.add_argument("--port",    default="/dev/ttyACM0")
     parser.add_argument("--baud",    type=int, default=115200)
