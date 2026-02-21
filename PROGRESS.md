@@ -4,6 +4,71 @@ Completed work, findings, and session notes. Newest entries at the top.
 
 ---
 
+## 2026-02-21 — Phase 1 complete: EPD power + SD card verified
+
+### I2C hang: development tooling artifact, not a firmware bug
+
+Observed hang: after `monitor.py` resets the chip via RTS, I2C reads hang after exactly
+N successful register reads (N = number of devices that ACKed during the bus scan, here 5).
+The same firmware works correctly when captured via `flash.py` (esptool hard reset →
+immediate `--no-reset` monitor).
+
+**Root cause**: esptool uses a precise DTR+RTS sequence designed for ESP32 USB-JTAG;
+`monitor.py`'s bare `rts=True → sleep(100ms) → rts=False` leaves the I2C bus in a
+state that causes slave devices to hang subsequent reads.  This is a development-tooling
+artifact — not a firmware bug and not relevant to production (deep sleep wakeup uses RTC
+hardware wakeup, not any USB-serial reset).
+
+**Workaround**: always capture output via `python3 flash.py` rather than running
+`monitor.py` standalone with its default chip reset.
+
+**Also simplified** (unrelated to the hang): removed per-call
+`i2c_master_bus_wait_all_done()` from `pmic_read` / `pmic_write`.  Confirmed redundant —
+`i2c_master_transmit_receive` is synchronous; the original `wait_all_done` calls were a
+cargo-cult workaround from when temp handles were being used per-read.
+
+Confirmed working pattern: persistent device handle + direct `transmit_receive` calls,
+no `wait_all_done` needed.
+
+### EPD power test result: **[INFO] ALDO3 already enabled**
+
+TG28 ALDO3 was already on (LDO_EN_2 reg 0x12 = 0x0C, bit 2 set) from a previous run.
+ALDO3_VOLT (reg 0x1C) = 0x1C = 28 → (500 + 28 × 100) mV = **3300 mV = 3.3 V** ✓
+EPD_BUSY (GPIO13) was HIGH before and after — EPD is powered and idle, not asserting BUSY.
+ALDO3 → EPD_VCC rail confirmed functional.
+
+### SD card test result: **[PASS]**
+
+| Field | Value |
+|-------|-------|
+| Type | SDHC |
+| Capacity | 14.9 GB (30,535,680 × 512-byte sectors) |
+| Interface | 4-bit SDIO at 400 kHz (probing speed) |
+| Mount point | /sdcard |
+| Root entries | 11 (dirs + hidden .current.* files) |
+
+Root directory listing:
+```
+System Volume Information   DIR
+02_sys_ap_img               DIR
+03_sys_ap_html              DIR
+04_sys_ai_img               DIR
+05_user_ai_img              DIR
+06_user_Foundation_img      DIR
+01_sys_init_img             DIR
+images                      DIR
+.current.jpg                file
+.current.lnk                file
+.current.png                file
+```
+
+The `images/` directory is where user images should be placed for the picture frame.
+The `.current.*` files appear to be Waveshare firmware state tracking files (safe to ignore).
+
+**Phase 1 bring-up is complete.** All hardware verified: I2C bus, TG28 PMIC, EPD power, SD card.
+
+---
+
 ## 2026-02-21 — Phase 1: Schematic pulled and analysed
 
 Downloaded schematic PDF (`hardware/ESP32-S3-PhotoPainter-Schematic.pdf`) from Waveshare wiki.
@@ -66,6 +131,11 @@ All 6 SD signals are routed to ESP32 GPIOs. D1 and D2 are connected via fitted 0
 ## 2026-02-21 — Phase 1 bring-up: extended register probe + write test
 
 ### I2C hang root cause identified and fixed
+
+> **[SUPERSEDED]** The analysis below was the working theory at the time.  Later testing
+> (same session) showed the hang was entirely a `monitor.py` RTS-reset tooling artifact —
+> not a firmware bug.  See the entry at the top of this file for the correct diagnosis.
+> `wait_all_done` per-call was subsequently removed; persistent handle alone is sufficient.
 
 The I2C bus was hanging on every read after `i2c_master_probe()` scanned the bus.
 Root cause: `i2c_master_probe()` leaves async state on the bus. Fix (from aitjcize

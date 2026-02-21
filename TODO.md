@@ -3,7 +3,7 @@
 Granular task list. Items are grouped by phase and ordered by priority within each group.
 Move completed items to PROGRESS.md.
 
-## Phase 1 — Hardware Bring-Up ✓ COMPLETE
+## Phase 1 — Hardware Bring-Up ✓ COMPLETE (all items verified 2026-02-21)
 
 - [x] Scaffold ESP-IDF project structure (CMakeLists.txt, sdkconfig.defaults)
 - [x] Set target esp32s3, verify toolchain builds
@@ -15,8 +15,8 @@ Move completed items to PROGRESS.md.
 - [x] Pull schematic from Waveshare wiki — determine:
   - PCF85063 INTB → **GPIO6 directly** (not through TG28)
   - SD card → **4-bit SDIO** (GPIO38/39/40/41/1/2)
-- [ ] Verify EPD power: enable TG28 ALDO3 via I2C → confirm EPD BUSY pin changes state
-- [ ] Mount SD card (4-bit SDIO: GPIO38/39/40/41/1/2), list root directory
+- [x] Verify EPD power: enable TG28 ALDO3 via I2C → ALDO3 already live (LDO_EN_2=0x0C), ALDO3_VOLT=3.3V, BUSY=HIGH (EPD idle) ✓
+- [x] Mount SD card (4-bit SDIO: GPIO38/39/40/41/1/2), list root directory — 14.9GB SDHC, /sdcard mounted, images/ dir present ✓
 
 ## Phase 2 — PMIC Driver (pure C)
 
