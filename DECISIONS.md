@@ -15,17 +15,17 @@ Arduino abstractions add overhead and hide the register-level control needed for
 
 ---
 
-## ADR-002: Language — C with C++ permitted where it saves significant work
+## ADR-002: Language — pure C
 
-**Decision**: Primary language is C. C++ is permitted where it saves significant work, specifically
-for porting existing C++ components (e.g. XPowersLib / aitjcize's axp2101.cpp for PMIC control).
+**Decision**: Pure C only. XPowersLib (C++) will not be used — port PMIC logic to C directly.
 
-**Rationale**: Developer preference (20+ years C experience). ESP-IDF is a C-native ecosystem.
-No object-oriented requirements that justify C++ complexity overhead in new code. However,
-forcing a rewrite of well-tested C++ libraries (like XPowersLib) to pure C is unnecessary
-churn — ESP-IDF supports mixed C/C++ projects natively.
+**Rationale**: After Phase 1 bring-up confirmed TG28 is AXP2101 register-compatible, the
+XPowersLib dependency is unnecessary. The only PMIC operations needed (init, sleep, shutdown)
+are a small set of register writes that are straightforward to port from the XPowersAXP2101.tpp
+template into plain C functions. Introducing a C++ template library dependency for a handful
+of I2C writes is not worth the added complexity.
 
-**Status**: Decided (updated during Phase 1 bring-up)
+**Status**: Decided (revised after Phase 1 hardware confirmation)
 
 ---
 
@@ -80,9 +80,9 @@ the main supply. Enables true daily-at-fixed-time scheduling.
 
 **Implementation detail**: The aitjcize firmware wakes the ESP32-S3 via the AXP2101/TG28 IRQ pin,
 not a direct PCF85063 INTB → GPIO connection. The likely path is:
-`PCF85063 INTB → AXP2101 IRQ input → AXP2101 PWROK/IRQ output → ESP32-S3 wakeup pin`.
-If the TG28 is not AXP2101-compatible, this chain breaks. An alternative is a direct wire
-from PCF85063 INTB to a free ESP32-S3 GPIO configured as EXT0/EXT1 wakeup source.
+`PCF85063 INTB → TG28 IRQ input → TG28 IRQ output → ESP32-S3 wakeup pin`.
+TG28 is confirmed AXP2101 register-compatible (ADR-007), so this chain should work.
+An alternative is a direct PCF85063 INTB wire to a free ESP32-S3 GPIO (EXT0/EXT1 wakeup).
 Must verify from schematic before choosing approach.
 
 **Also**: The aitjcize PCF85063 driver does NOT implement alarm registers. Alarm support (registers
@@ -92,23 +92,23 @@ Must verify from schematic before choosing approach.
 
 ---
 
-## ADR-007: TG28 PMIC — status unknown, AXP2101 compatibility unverified
+## ADR-007: TG28 PMIC — AXP2101 register-compatible; implement in pure C
 
-**Decision**: Defer PMIC-dependent code until TG28 register map is confirmed.
+**Decision**: Port AXP2101 sleep/init logic to pure C, referencing aitjcize axp2101_basic_sleep_start
+and the XPowersAXP2101.tpp register map. Patch chip ID check to accept 0x4A (TG28) in addition to
+0x47 (AXP2101).
 
-**Rationale**: No public TG28 datasheet. Board has TG28, not AXP2101. Reading chip ID register
-0x03 will confirm compatibility. The Waveshare Jan 2026 firmware update added NO TG28 support —
-it remains entirely unaddressed in all known open-source firmware.
+**Rationale**: Phase 1 bring-up (2026-02-21) confirmed:
+- TG28 responds at I2C 0x34 ✓
+- Registers 0x00–0x41 are all readable ✓
+- IRQ_EN_1 (0x40) write/readback/restore test PASSED ✓
+- Chip ID register 0x03 = 0x4A (not 0x47, but register map is otherwise compatible)
 
-If TG28 is not register-compatible: minimal approach is to skip all PMIC register writes
-and rely on the hardware default power state. The EPD power is controlled by GPIO 6, not the PMIC,
-so EPD operation is PMIC-independent. Battery status/charging will be unavailable.
+The aitjcize XPowersLib C++ dependency is avoided per ADR-002. The key PMIC operations for this
+project are a small set: identify chip, configure sleep rail state, set wakeup source. These are
+straightforward to implement as C functions with direct I2C register writes.
 
-The aitjcize AXP2101 driver uses XPowersLib (C++). Even if TG28 is compatible, the C++ dependency
-means we need to re-implement the key PMIC functions in C (init, sleep, shutdown) referencing
-the XPowersAXP2101.tpp template as a register-map guide.
-
-**Status**: Blocked — requires hardware verification (Phase 1)
+**Status**: Decided — Phase 1 complete, PMIC driver implementation unblocked
 
 ---
 

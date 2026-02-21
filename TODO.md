@@ -3,29 +3,35 @@
 Granular task list. Items are grouped by phase and ordered by priority within each group.
 Move completed items to PROGRESS.md.
 
-## Immediate / Unblocked
+## Phase 1 — Hardware Bring-Up ✓ COMPLETE
 
-- [ ] Scaffold ESP-IDF project structure (`idf.py create-project` or manual CMakeLists)
-- [ ] Set target: `idf.py set-target esp32s3`
-- [ ] Verify toolchain builds a hello-world against the board
-- [ ] Write minimal I2C scan utility (scan 0x00–0x7F, log addresses found)
-
-## Phase 1 — Hardware Bring-Up
-
-- [ ] Flash I2C scan, record which addresses respond (expect 0x34, 0x51, 0x70)
-- [ ] Read TG28 register 0x03 — document returned chip ID (0x47 = AXP2101 compatible)
-- [ ] If TG28 ≠ 0x47: note actual value, decide minimal PMIC approach (see ADR-007)
-- [ ] Confirm PCF85063 RTC responds at 0x51
-- [ ] Confirm SHTC3 responds at 0x70
+- [x] Scaffold ESP-IDF project structure (CMakeLists.txt, sdkconfig.defaults)
+- [x] Set target esp32s3, verify toolchain builds
+- [x] Write I2C scan utility (0x01–0x77, log all found devices)
+- [x] Flash I2C scan — confirmed 0x34 (TG28), 0x51 (PCF85063), 0x70 (SHTC3)
+- [x] Read TG28 chip ID (reg 0x03) — returned 0x4A (not 0x47; register-compatible confirmed)
+- [x] Extended register probe (14 regs 0x00–0x41) — all readable, no hangs
+- [x] Register write test (IRQ_EN_1 0x40) — write/readback/restore PASS
 - [ ] Pull schematic from Waveshare wiki — determine:
-  - Is PCF85063 INTB wired to AXP2101/TG28 IRQ input or directly to an ESP32-S3 GPIO?
+  - Is PCF85063 INTB wired to TG28 IRQ input or directly to an ESP32-S3 GPIO?
   - Is SD card wired as SDIO (CMD/CLK/D0-D3) or SPI (MOSI/MISO/CLK/CS)?
 - [ ] Verify GPIO 6 (EPD PWR) high → EPD BUSY pin changes state
 - [ ] Mount SD card (correct interface per schematic finding), list root directory
 
-## Phase 2 — EPD Driver
+## Phase 2 — PMIC Driver (pure C)
 
-Init sequence and pixel format are now fully known from Waveshare Jan 2026 source (see PROGRESS.md).
+TG28 is AXP2101 register-compatible (confirmed). Plan: port aitjcize axp2101_basic_sleep_start
+logic to pure C; patch chip ID check to accept 0x4A in addition to 0x47.
+
+- [ ] Implement pmic_init(): open I2C device handle, verify chip ID (accept 0x4A or 0x47)
+- [ ] Implement pmic_sleep(): disable non-essential rails, keep DC1 (3.3V system)
+  - Disable: DC2–5, ALDO1–2, BLDO1–2, CPUSLDO, DLDO1–2, ALDO3, ALDO4
+  - Keep: DC1 (3.3V) — adapt register values from aitjcize axp2101_basic_sleep_start
+- [ ] Verify wakeup chain from schematic: PCF85063 INTB → TG28 IRQ → ESP32-S3 or direct GPIO
+
+## Phase 3 — EPD Driver
+
+Init sequence and pixel format are fully known from Waveshare Jan 2026 source (see PROGRESS.md).
 
 - [ ] Implement SPI init: MOSI=11, CLK=10, CS=9, DC=8, RST=12, BUSY=13, 40 MHz, half-duplex
 - [ ] Implement EPD reset: RST high 50ms → low 20ms → high 50ms
@@ -39,7 +45,7 @@ Init sequence and pixel format are now fully known from Waveshare Jan 2026 sourc
 - [ ] Test: solid colour for each of the 6 palette colours
 - [ ] Measure EPD refresh time with stopwatch (expect ~30s)
 
-## Phase 3 — Image Pipeline
+## Phase 4 — Image Pipeline
 
 - [ ] Find measured Spectra 6 palette in aitjcize epaper component (search `components/epaper/`)
 - [ ] Implement Floyd-Steinberg dithering in C against measured palette
@@ -53,10 +59,10 @@ Init sequence and pixel format are now fully known from Waveshare Jan 2026 sourc
 - [ ] Define portrait image policy: letterbox with white bars, or crop-to-fill
 - [ ] End-to-end test: JPEG on SD → decode → scale → dither → EPD display
 
-## Phase 4 — Wake / Sleep
+## Phase 5 — Wake / Sleep
 
-PCF85063 time read/write is available from aitjcize (port pcf85063.c). Alarm support is not —
-must implement from scratch using PCF85063 datasheet register map 0x0B–0x0F.
+PCF85063 time read/write available from aitjcize (port pcf85063.c). Alarm support missing —
+must implement from scratch using PCF85063 datasheet registers 0x0B–0x0F.
 
 - [ ] Port aitjcize pcf85063.c (time read/write, OSF check) — pure C, new i2c_master API
 - [ ] Implement PCF85063 alarm registers:
@@ -66,27 +72,26 @@ must implement from scratch using PCF85063 datasheet register map 0x0B–0x0F.
   - 0x0E: day alarm (AEN bit 7)
   - 0x0F: weekday alarm (AEN bit 7)
   - Clear alarm flag in Control_2 (reg 0x01, AF bit)
-- [ ] Determine wakeup GPIO from schematic (PCF85063 INTB → AXP2101 or direct ESP32-S3 GPIO)
+- [ ] Determine wakeup GPIO from schematic (PCF85063 INTB → TG28 or direct ESP32-S3 GPIO)
 - [ ] Implement deep sleep with correct wakeup source (EXT0 or EXT1 on wakeup GPIO)
-- [ ] Implement TG28/PMIC sleep sequence in C (adapt aitjcize axp2101_basic_sleep_start logic):
-  - Only if TG28 confirmed AXP2101-compatible; otherwise skip PMIC writes
+- [ ] Implement TG28 sleep sequence in C (adapt aitjcize axp2101_basic_sleep_start logic)
 - [ ] Test: set 60s alarm, enter deep sleep, verify wakeup and alarm cause logged
 - [ ] Persist image index in RTC fast memory (8KB, survives deep sleep)
 - [ ] Handle first-boot: RTC RAM magic word check to detect uninitialised state
 
-## Phase 5 — WiFi (deferred)
+## Phase 6 — WiFi (deferred)
 
 - [ ] WiFi STA connect with configurable SSID/password (NVS)
 - [ ] HTTP GET raw image URL
 - [ ] Fallback to SD on HTTP failure
 
-## Phase 6 — Power / Battery Life
+## Phase 7 — Power / Battery Life
 
 - [ ] Measure sleep current (target: <100 µA)
 - [ ] Measure peak wake current and wake duration
 - [ ] Calculate estimated daily mAh consumption
 - [ ] Project battery life against known cell capacity
-- [ ] Tune PMIC output voltages if TG28 allows it
+- [ ] Tune PMIC output voltages if TG28 allows it (register map now confirmed)
 
 ## Backlog / Nice-to-Have
 
