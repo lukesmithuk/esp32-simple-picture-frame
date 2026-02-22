@@ -4,6 +4,69 @@ Completed work, findings, and session notes. Newest entries at the top.
 
 ---
 
+## 2026-02-22 — Phase 2 production boot verified; enter_deep_sleep() helper
+
+### Production boot cycle verified on hardware
+
+Cold-boot from USB plug (no BOOT button held) runs the full production path cleanly:
+- `pmic_init()` — chip ID 0x4A, I2C OK
+- `do_display_update()` — ALDO3 on → off without crash
+- Halt loop reached and running, logging `halted [N]` every 5 seconds
+
+Confirmed by monitoring serial output at I(10816) halted [1] — boot + full pre-sleep
+sequence completes in ~10.8 seconds from power-on.
+
+### Flash / boot procedure (ADR-014 context)
+
+Discovered and documented four distinct boot paths with different I2C/serial behaviours:
+
+| Path | I2C state | Firmware runs? |
+|------|-----------|----------------|
+| Cold USB plug (no BOOT) | Clean | Yes |
+| BOOT + USB replug → flash → cold USB replug | Clean | Yes |
+| BOOT + USB replug → flash → esptool hard-reset | Bad (download mode) | No |
+| `monitor.py --reset` (RTS toggle) | Bad (download mode) | No |
+
+**Reliable flash + verify workflow**: `flash.py --no-monitor` → unplug + replug USB
+(no BOOT) → `monitor.py --timeout N`.
+
+### pmic_sleep() / LDO_EN_3 silences USB-JTAG (ADR-014)
+
+Discovered that calling `pmic_sleep()` before the debug halt loop causes all subsequent
+serial output to be lost.  Isolated to `pmic_sleep()` zeroing LDO_EN_3 (was 0x03 at
+boot = DLDO1 bit0 + DLDO2 bit1).  DLDO1/DLDO2 rail-to-pin mapping unknown — one or
+both likely powers a component in the USB-JTAG signal path.
+
+**Workaround**: debug build halts before `pmic_sleep()`.  In true production (deep sleep)
+this is irrelevant — serial is not needed after `esp_deep_sleep_start()`.
+
+### enter_deep_sleep() helper
+
+Refactored the sleep sequence from inline code in `app_main()` into a single helper:
+
+```c
+static void enter_deep_sleep(pmic_handle_t pmic, i2c_master_bus_handle_t bus)
+```
+
+Owns: `pmic_sleep()` → `pmic_deinit()` → `i2c_del_master_bus()` →
+`esp_sleep_enable_ext0_wakeup(GPIO6, LOW)` → `esp_deep_sleep_start()`.
+
+Debug halt loop sits before the call with a clear ADR-014 reference.  When Phase 7
+resolves DLDO rail mapping, delete the halt loop — `enter_deep_sleep()` is already in place.
+
+### flash.py improvements
+
+- Added `--timeout N` argument that passes through to `monitor.py`
+- Added `sys.stdout.flush()` + `sys.stderr.flush()` before `os.execv` so buffered
+  print lines are not lost on process replacement
+
+### esp_sleep_get_wakeup_cause deprecation fixed
+
+IDF v6 deprecates `esp_sleep_get_wakeup_cause()` in favour of
+`esp_sleep_get_wakeup_causes()` (plural, returns bitmask).  Updated in `app_main()`.
+
+---
+
 ## 2026-02-22 — Phase 2 complete: PMIC driver + application skeleton
 
 ### Chip ID correction

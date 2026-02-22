@@ -70,6 +70,7 @@ Convert arbitrary images to the Spectra 6 6-colour palette for display.
 |---|-----------|--------|
 | 1 | All peripherals confirmed reachable via I2C scan | **DONE** (2026-02-21) |
 | 2 | PMIC driver: EPD power + sleep sequence working | **DONE** (2026-02-22) |
+| 2a | Production boot verified on hardware (pmic_init + EPD power cycle) | **DONE** (2026-02-22) |
 | 3 | Static test image displayed on EPD | pending |
 | 4 | SD-card JPEG rendered on EPD end-to-end | pending |
 | 5 | Device wakes, updates, sleeps reliably 10× in a row | pending |
