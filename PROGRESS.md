@@ -4,6 +4,56 @@ Completed work, findings, and session notes. Newest entries at the top.
 
 ---
 
+## 2026-02-22 — Phase 3 complete: EPD driver implemented
+
+### EPD driver component (`components/epd/`)
+
+Pure-C SPI driver for the 7.3" Waveshare Spectra 6 panel, following the
+`components/pmic/` pattern established in Phase 2.
+
+**Files**: `epd.h`, `epd_internal.h`, `epd.c`, `epd_tests.c`, `CMakeLists.txt`
+
+**Key implementation decisions**:
+- SPI2_HOST, 40 MHz half-duplex, `SPI_DMA_CH_AUTO`
+- `epd_send_cmd()` uses `SPI_TRANS_USE_TXDATA` flag: command byte stored in
+  transaction descriptor, bypasses DMA for 1-byte transfers (no bounce-buffer
+  alloc on every command)
+- Frame transfer: 5000-byte chunks matching both reference repos (aitjcize and
+  Waveshare Jan 2026). Single large DMA transfer is a backlog item.
+- BUSY wait: 10ms `vTaskDelay` between polls, 60s timeout, logs at DEBUG every 5s
+- Sleep: `0x02 0x00` (POWER_OFF) → wait BUSY → `0x07 0xA5` (DEEP_SLEEP).
+  POWER_OFF is sent even if called after `epd_display()` — idempotent.
+
+**Sequence notes**:
+- Init ends with `0x04` (POWER_ON) → wait BUSY. Panel is powered on after init.
+- Refresh starts with `0x04` (POWER_ON) again — intentional per the documented
+  sequence. Idempotent on the first call; required on subsequent calls since the
+  previous refresh ends with POWER_OFF.
+- `max_transfer_sz = EPD_CHUNK_SIZE` (5000). Note: 5000 > SPI_MAX_DMA_LEN
+  (4092 = one DMA descriptor); IDF handles this via linked descriptor chain.
+
+### `main.c` updates
+
+- `do_display_update()` now calls `epd_init()` / `epd_display()` / `epd_sleep()` /
+  `epd_deinit()` with a white placeholder framebuffer (Phase 4 replaces this with
+  image load from SD card)
+- Test mode block now initialises EPD before calling `tests_run(pmic, epd)`
+- `tests_run()` signature extended to `tests_run(pmic_handle_t, epd_handle_t)`;
+  `epd_run_tests()` added to the suite
+
+### Test suite (`epd_run_tests()`)
+
+Allocates 192 KB framebuffer in PSRAM, fills with solid colour for each of the
+6 Spectra 6 palette indices (black, white, red, green, blue, yellow), calls
+`epd_display()` for each with a 2s visual inspection pause between colours.
+Full suite duration ~3 minutes. Requires visual verification on hardware.
+
+### Build result
+
+Clean build, zero warnings. Binary 78% under partition limit.
+
+---
+
 ## 2026-02-22 — Phase 2 production boot verified; enter_deep_sleep() helper
 
 ### Production boot cycle verified on hardware

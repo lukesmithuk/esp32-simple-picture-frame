@@ -2,7 +2,7 @@
  * tests.c — diagnostic / exploratory test suite
  *
  * Called from app_main() when CONFIG_TEST_MODE=y.  Each phase adds its own
- * test function here (pmic_run_tests, rtc_run_tests, epd_run_tests, …).
+ * test function here (pmic_run_tests, epd_run_tests, rtc_run_tests, …).
  * tests_run() calls them in sequence and reports an overall pass/fail.
  *
  * To enable: idf.py menuconfig → Picture Frame → Test mode
@@ -15,11 +15,12 @@
 
 #include "tests.h"
 #include "pmic.h"
+#include "epd.h"
 #include "esp_log.h"
 
 static const char *TAG = "tests";
 
-void tests_run(pmic_handle_t pmic)
+void tests_run(pmic_handle_t pmic, epd_handle_t epd)
 {
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, " Test mode");
@@ -33,10 +34,15 @@ void tests_run(pmic_handle_t pmic)
     else
         failed++;
 
+    /* ── EPD ── */
+    if (epd_run_tests(epd) == ESP_OK)
+        passed++;
+    else
+        failed++;
+
     /*
      * Future phases add their test calls here:
      *   rtc_run_tests(rtc)    — Phase 5
-     *   epd_run_tests(epd)    — Phase 3
      *   img_run_tests()       — Phase 4
      */
 

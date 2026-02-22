@@ -35,20 +35,19 @@ Move completed items to PROGRESS.md.
       leaves I2C in bad state; esptool hard-reset via USB-JTAG lands in download mode
 - [x] flash.py: add --timeout passthrough to monitor.py; flush stdout before os.execv
 
-## Phase 3 — EPD Driver
+## Phase 3 — EPD Driver ✓ COMPLETE (2026-02-22)
 
-Init sequence and pixel format are fully known from Waveshare Jan 2026 source (see PROGRESS.md).
+Init sequence and pixel format sourced from Waveshare Jan 2026 and aitjcize reference.
+Frame transfer uses 5000-byte chunks (both reference repos); sleep = 0x02 00 → 0x07 0xA5.
 
-- [ ] Implement SPI init: MOSI=11, CLK=10, CS=9, DC=8, RST=12, BUSY=13, 40 MHz, half-duplex
-- [ ] Implement EPD reset: RST high 50ms → low 20ms → high 50ms
-- [ ] Implement EPD init sequence (exact bytes in PROGRESS.md)
-- [ ] Implement BUSY wait: poll GPIO 13 until HIGH (active low, returns when idle)
-- [ ] Implement frame send: cmd 0x10 → DMA send 192,000 bytes → display refresh sequence
-- [ ] Implement display refresh: 0x04 → wait → 0x06+data → 0x12 00 → wait → 0x02 00 → wait
-- [ ] Implement panel sleep command (verify command byte from Waveshare source)
-- [ ] Test: all-white frame (index=1 packed: 0x11 repeated)
-- [ ] Test: all-black frame (index=0 packed: 0x00 repeated)
-- [ ] Test: solid colour for each of the 6 palette colours
+- [x] Implement SPI init: MOSI=11, CLK=10, CS=9, DC=8, RST=12, BUSY=13, 40 MHz, half-duplex
+- [x] Implement EPD reset: RST high 50ms → low 20ms → high 50ms
+- [x] Implement EPD init sequence (exact bytes in PROGRESS.md)
+- [x] Implement BUSY wait: poll GPIO 13 until HIGH (active low, 10ms yield, 60s timeout)
+- [x] Implement frame send: cmd 0x10 → 5000-byte chunked SPI → display refresh sequence
+- [x] Implement display refresh: 0x04 → wait → 0x06+data → 0x12 00 → wait → 0x02 00 → wait
+- [x] Implement panel sleep: 0x02 00 (POWER_OFF) → wait → 0x07 0xA5 (DEEP_SLEEP)
+- [ ] Flash and verify: solid colour for each of the 6 palette colours (visual check, ~3 min)
 - [ ] Measure EPD refresh time with stopwatch (expect ~30s)
 
 ## Phase 4 — Image Pipeline
@@ -117,3 +116,7 @@ must implement from scratch using PCF85063 datasheet registers 0x0B–0x0F.
 - [ ] Simple web UI for image upload to SD
 - [ ] Temperature/humidity display overlay (SHTC3)
 - [ ] Low-battery indicator on EPD
+- [ ] Test single-shot EDMA frame transfer: replace 5000-byte chunked SPI with one
+      spi_device_transmit() of the full 192,000 bytes (set max_transfer_sz=192000,
+      SPI_DMA_CH_AUTO). ESP32-S3 EDMA supports PSRAM→SPI in IDF v6 — may work,
+      but both reference repos use chunked transfer as the safe default.

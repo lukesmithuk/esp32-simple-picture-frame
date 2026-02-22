@@ -32,8 +32,8 @@
  * Phase status (update as phases complete)
  * ----------------------------------------
  *   Phase 1 — Hardware bring-up       COMPLETE (2026-02-21)
- *   Phase 2 — PMIC driver             IN PROGRESS
- *   Phase 3 — EPD driver              pending
+ *   Phase 2 — PMIC driver             COMPLETE (2026-02-22)
+ *   Phase 3 — EPD driver              COMPLETE (2026-02-22)
  *   Phase 4 — Image pipeline          pending
  *   Phase 5 — RTC / wake-sleep        pending
  *   Phase 6 — WiFi image fetch        deferred
@@ -43,12 +43,16 @@
 #include "sdkconfig.h"
 #include "esp_log.h"
 #include "esp_sleep.h"
+#include "esp_heap_caps.h"
 #include "driver/i2c_master.h"
 #include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include <string.h>
+
 #include "pmic.h"
+#include "epd.h"
 
 #ifdef CONFIG_TEST_MODE
 #include "tests.h"
@@ -152,16 +156,33 @@ static void do_display_update(pmic_handle_t pmic)
     ESP_ERROR_CHECK(pmic_epd_power(pmic, true));
     vTaskDelay(pdMS_TO_TICKS(2)); /* allow rail to settle before SPI */
 
+    epd_handle_t epd;
+    ESP_ERROR_CHECK(epd_init(&epd));
+
     /*
-     * Phase 3: EPD driver
-     *   epd_init();
-     *   epd_display(framebuffer);
-     *   epd_sleep();
+     * Framebuffer: 192 KB, 4bpp packed, allocated in PSRAM.
      *
-     * Phase 4: image pipeline
-     *   img_load_next("/sdcard/images", framebuffer);
+     * Phase 4 will replace the white placeholder below with a JPEG loaded
+     * from SD card and dithered to the Spectra 6 palette.
      */
-    ESP_LOGW(TAG, "EPD and image pipeline not yet implemented (Phases 3–4)");
+    uint8_t *fb = heap_caps_malloc(EPD_FB_SIZE, MALLOC_CAP_SPIRAM);
+    if (fb) {
+        /* Solid white placeholder — index 1 packed into both nibbles */
+        memset(fb, (EPD_COLOR_WHITE << 4) | EPD_COLOR_WHITE, EPD_FB_SIZE);
+        ESP_LOGW(TAG, "Phase 4 not yet implemented — displaying white placeholder");
+
+        /* Phase 4: replace above two lines with:
+         *   img_load_next("/sdcard/images", fb, EPD_FB_SIZE);
+         */
+
+        ESP_ERROR_CHECK(epd_display(epd, fb, EPD_FB_SIZE));
+        heap_caps_free(fb);
+    } else {
+        ESP_LOGE(TAG, "framebuffer alloc failed — skipping display");
+    }
+
+    ESP_ERROR_CHECK(epd_sleep(epd));
+    epd_deinit(epd);
 
     /* Power off the EPD — must be done before deep sleep */
     ESP_ERROR_CHECK(pmic_epd_power(pmic, false));
@@ -200,10 +221,22 @@ void app_main(void)
     /*
      * Test mode: run diagnostics and return.  The device does NOT enter deep
      * sleep — keep a serial monitor connected to observe results.
+     *
+     * EPD must be powered on before initialising the driver.
      */
-    tests_run(pmic);
+    ESP_ERROR_CHECK(pmic_epd_power(pmic, true));
+    vTaskDelay(pdMS_TO_TICKS(2));
+
+    epd_handle_t epd;
+    ESP_ERROR_CHECK(epd_init(&epd));
+
+    tests_run(pmic, epd);
+
+    ESP_ERROR_CHECK(epd_sleep(epd));
+    epd_deinit(epd);
+    ESP_ERROR_CHECK(pmic_epd_power(pmic, false));
     pmic_deinit(pmic);
-    i2c_del_master_bus(bus);
+    ESP_ERROR_CHECK(i2c_del_master_bus(bus));
     ESP_LOGI(TAG, "Test mode complete — halted (reset to run again)");
     while (1) vTaskDelay(pdMS_TO_TICKS(1000));
 #endif
