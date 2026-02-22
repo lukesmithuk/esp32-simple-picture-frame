@@ -4,6 +4,47 @@ Completed work, findings, and session notes. Newest entries at the top.
 
 ---
 
+## 2026-02-22 — Phase 2 complete: PMIC driver + application skeleton
+
+### Chip ID correction
+
+Earlier notes recorded "AXP2101 = 0x47, TG28 = 0x4A".  This was wrong.
+Confirmed from XPowersLib source (`REG/AXP2101Constants.h`):
+`XPOWERS_AXP2101_CHIP_ID = 0x4A`.  The real AXP2101 also returns 0x4A.
+The `pmic_init()` check therefore accepts only 0x4A (see ADR-013).
+
+### PMIC driver (`components/pmic/`)
+
+Pure-C driver implemented using the I2C pattern confirmed in Phase 1:
+- `pmic_init()` — adds device handle (0x34, 100 kHz), reads chip ID
+- `pmic_epd_power()` — sets ALDO3 voltage then enable bit (reg 0x12 bit2);
+  confirmed register addresses from Phase 1 hardware testing
+- `pmic_sleep()` — writes 0x00 to LDO_EN_1/2/3 (regs 0x11–0x13);
+  DCDC_EN (reg 0x10) left untouched pending bit-mapping investigation
+- `pmic_run_tests()` — register probe, write test, ALDO3 power cycle
+- `pmic_deinit()` — removes I2C device handle
+
+### Application skeleton
+
+`main.c` restructured into the production boot-cycle model (ADR-012):
+boot → init → update decision → EPD update (stubbed) → pmic_sleep() →
+esp_deep_sleep_start().  No main loop — deep sleep is the loop.
+
+### Test mode
+
+`CONFIG_TEST_MODE` Kconfig option added.  When enabled, `app_main()` calls
+`tests_run()` (in `tests.c`) instead of entering the production boot cycle.
+Keeps the device alive for serial monitor observation.  Add per-component
+test functions to `tests.c` as each phase completes.
+
+### TG28 register layout
+
+Confirmed that TG28 uses an older AXP register layout for DC/LDO control,
+not the AXP2101 layout (which moved DC enable to 0x80, LDO enable to 0x90).
+All registers used in pmic.c are confirmed working on hardware from Phase 1.
+
+---
+
 ## 2026-02-21 — Phase 1 complete: EPD power + SD card verified
 
 ### I2C hang: development tooling artifact, not a firmware bug
@@ -199,17 +240,13 @@ dependency is not worth the complexity for the limited PMIC operations we need.
 
 Two `probe device timeout` warnings from IDF during scan — normal for devices that do clock stretching on address probe. All expected devices still detected.
 
-### TG28 chip ID: **0x4A** (NOT 0x47)
+### TG28 chip ID: **0x4A**
 
-Register 0x03 returned `0x4A`. AXP2101 returns `0x47`. The TG28 is **not** AXP2101-compatible.
+Register 0x03 returned `0x4A`.
 
-This means:
-- XPowersLib cannot be used, even as a reference implementation
-- All PMIC register writes must be skipped unless/until the TG28 register map is found
-- Minimal fallback: skip PMIC entirely; EPD power is on GPIO 6 (independent of PMIC)
-- Battery status, charging control, and regulated rail control are unavailable for now
-
-Next steps for PMIC: search for TG28 datasheet or any community reverse-engineering. The chip ID `0x4A` is not found in any known open-source PMIC library.
+> **Correction (2026-02-22)**: Earlier notes stated "AXP2101 returns 0x47".  This was wrong.
+> XPowersLib source confirms `XPOWERS_AXP2101_CHIP_ID = 0x4A` — the real AXP2101 also returns
+> 0x4A.  The TG28 and AXP2101 share the same chip ID.  See ADR-013.
 
 ---
 

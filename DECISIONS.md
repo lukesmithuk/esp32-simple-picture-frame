@@ -108,7 +108,11 @@ The aitjcize XPowersLib C++ dependency is avoided per ADR-002. The key PMIC oper
 project are a small set: identify chip, configure sleep rail state, set wakeup source. These are
 straightforward to implement as C functions with direct I2C register writes.
 
-**Status**: Decided — Phase 1 complete, PMIC driver implementation unblocked
+**Chip ID clarification (2026-02-22)**: The real AXP2101 also has chip ID 0x4A (confirmed from
+XPowersLib source REG/AXP2101Constants.h).  The earlier note "AXP2101 = 0x47" was incorrect.
+See ADR-013.
+
+**Status**: Decided — Phase 1 complete, PMIC driver implemented in Phase 2
 
 ---
 
@@ -162,3 +166,48 @@ SPI-mode SD. Our project should use whichever the hardware is wired for. If SDIO
 `sdmmc_host_t` with `SDMMC_HOST_DEFAULT()`; if SPI, use `esp_vfs_fat` + SPI SD driver.
 
 **Status**: Blocked — verify from schematic
+
+---
+
+## ADR-012: Boot-cycle model — deep sleep, not a main loop
+
+**Decision**: The firmware does not use a traditional `while(1)` main loop.
+Each display update is a complete cold-boot → work → deep-sleep cycle.
+
+**Rationale**: Deep sleep is the only way to achieve the target power budget
+(months of battery life).  In ESP-IDF, `esp_deep_sleep_start()` never returns
+— the CPU powers down entirely.  The PCF85063 RTC alarm fires a hardware
+interrupt on GPIO6 (active LOW, EXT0 wakeup source), which cold-boots the
+chip.  `app_main()` then runs again from the top.  There is no resume state;
+each boot is a fresh start.
+
+**Implications**:
+- Persistent data (image index, last-display timestamp) must live in RTC fast
+  memory (8 KB, survives deep sleep) or NVS flash.
+- `pmic_sleep()` must be called before `esp_deep_sleep_start()` to power down
+  the LDO rails.  The PCF85063 alarm flag must be cleared early in `app_main()`
+  on every boot to prevent an immediate re-wakeup.
+- The deep-sleep call site in `main.c` is annotated with a comment explaining
+  the boot-cycle model, as is `pmic.h`, so future readers understand why there
+  is no loop.
+
+**Status**: Decided (Phase 2, 2026-02-22)
+
+---
+
+## ADR-013: Chip ID 0x4A is correct for both TG28 and AXP2101
+
+**Decision**: The PMIC chip ID check in `pmic_init()` accepts only 0x4A.  The
+earlier note "AXP2101 = 0x47" was incorrect and has been removed from all
+documentation.
+
+**Rationale**: The XPowersLib source (`REG/AXP2101Constants.h`) defines
+`XPOWERS_AXP2101_CHIP_ID = 0x4A`.  This confirms the real AXP2101 also returns
+0x4A from register 0x03 — the same value our TG28 returns.  The "0x47" figure
+appeared in early project notes from an unreliable secondary source.  Hardware
+testing (Phase 1, 2026-02-21) also returned 0x4A, which is consistent.
+
+There is therefore no need to accept a second ID value; `pmic_init()` checks for
+0x4A only and returns `ESP_ERR_NOT_SUPPORTED` for anything else.
+
+**Status**: Decided (Phase 2, 2026-02-22)

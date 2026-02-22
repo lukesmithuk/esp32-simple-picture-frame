@@ -18,15 +18,16 @@ Move completed items to PROGRESS.md.
 - [x] Verify EPD power: enable TG28 ALDO3 via I2C → ALDO3 already live (LDO_EN_2=0x0C), ALDO3_VOLT=3.3V, BUSY=HIGH (EPD idle) ✓
 - [x] Mount SD card (4-bit SDIO: GPIO38/39/40/41/1/2), list root directory — 14.9GB SDHC, /sdcard mounted, images/ dir present ✓
 
-## Phase 2 — PMIC Driver (pure C)
+## Phase 2 — PMIC Driver (pure C) ✓ COMPLETE (2026-02-22)
 
-TG28 is AXP2101 register-compatible (confirmed). Plan: port aitjcize axp2101_basic_sleep_start
-logic to pure C; patch chip ID check to accept 0x4A in addition to 0x47.
-
-- [ ] Implement pmic_init(): open I2C device handle, verify chip ID (accept 0x4A or 0x47)
-- [ ] Implement pmic_sleep(): disable non-essential rails, keep DC1 (3.3V system)
-  - Disable: DC2–5, ALDO1–2, BLDO1–2, CPUSLDO, DLDO1–2, ALDO3, ALDO4
-  - Keep: DC1 (3.3V) — adapt register values from aitjcize axp2101_basic_sleep_start
+- [x] Implement pmic_init(): open I2C device handle, verify chip ID (0x4A)
+      Note: AXP2101 also has ID 0x4A — the earlier "AXP2101 = 0x47" was wrong. See ADR-013.
+- [x] Implement pmic_epd_power(): enable/disable ALDO3 (EPD_VCC) via LDO_EN_2 bit2
+- [x] Implement pmic_sleep(): write 0x00 to LDO_EN_1/2/3; DCDC_EN left untouched (see below)
+- [x] Implement pmic_run_tests(): chip ID, register probe, write test, ALDO3 power cycle
+- [x] Application skeleton: main.c restructured with boot-cycle model (ADR-012)
+- [x] Test mode: CONFIG_TEST_MODE Kconfig option + tests.c framework
+- [x] Component structure: components/pmic/ with CMakeLists.txt
 - [x] Verify wakeup chain from schematic: PCF85063 INTB → **GPIO6 directly** (confirmed from schematic)
 
 ## Phase 3 — EPD Driver
@@ -87,6 +88,11 @@ must implement from scratch using PCF85063 datasheet registers 0x0B–0x0F.
 
 ## Phase 7 — Power / Battery Life
 
+- [ ] Determine DCDC_EN (reg 0x10) bit→rail mapping on TG28
+      Boot-time value: 0x34 (bits 2, 4, 5 set).  DC1 (3.3V system) must be on,
+      but bit0=0, so DC1 does not map to bit0.  Mapping unclear — touching this
+      register risks killing the system rail.  Once confirmed, add DCDC disable
+      to pmic_sleep() to cut DC2–DC5 and reduce sleep current further.
 - [ ] Measure sleep current (target: <100 µA)
 - [ ] Measure peak wake current and wake duration
 - [ ] Calculate estimated daily mAh consumption

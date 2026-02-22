@@ -4,6 +4,20 @@ Battery-powered e-ink picture frame on the Waveshare ESP32-S3-PhotoPainter. Wake
 updates the displayed image from SD card (or WiFi), then returns to deep sleep. Target: months of
 battery life per charge.
 
+## Boot-cycle model (ADR-012)
+
+This firmware has **no main loop**.  Each display update is a complete cold-boot → work → sleep
+cycle.  `esp_deep_sleep_start()` never returns; the PCF85063 RTC alarm on GPIO6 (EXT0, active LOW)
+triggers a cold boot and `app_main()` runs again from the top.
+
+```
+boot → app_main() → init → update → pmic_sleep() → deep_sleep_start()
+          ↑                                                  |
+          └──────── PCF85063 alarm → GPIO6 → cold boot ─────┘
+```
+
+Persistent state (image index, last-display time) lives in RTC fast memory or NVS.
+
 ## Phases
 
 ### Phase 1: Hardware Bring-Up
@@ -54,8 +68,9 @@ Convert arbitrary images to the Spectra 6 6-colour palette for display.
 
 | # | Milestone | Status |
 |---|-----------|--------|
-| 1 | All peripherals confirmed reachable via I2C scan | pending |
-| 2 | Static test image displayed on EPD | pending |
-| 3 | SD-card JPEG rendered on EPD end-to-end | pending |
-| 4 | Device wakes, updates, sleeps reliably 10× in a row | pending |
-| 5 | Battery life estimate validated against target | pending |
+| 1 | All peripherals confirmed reachable via I2C scan | **DONE** (2026-02-21) |
+| 2 | PMIC driver: EPD power + sleep sequence working | **DONE** (2026-02-22) |
+| 3 | Static test image displayed on EPD | pending |
+| 4 | SD-card JPEG rendered on EPD end-to-end | pending |
+| 5 | Device wakes, updates, sleeps reliably 10× in a row | pending |
+| 6 | Battery life estimate validated against target | pending |
