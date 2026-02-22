@@ -74,6 +74,8 @@ def main():
     parser.add_argument("--baud",       type=int, default=460800)
     parser.add_argument("--no-monitor", action="store_true",
                         help="Don't start serial monitor after flashing")
+    parser.add_argument("--timeout",    type=float, default=0,
+                        help="Pass through to monitor.py: stop after N seconds (0 = run until Ctrl-C)")
     args = parser.parse_args()
 
     flash_args = read_flash_args()
@@ -101,8 +103,12 @@ def main():
     if not args.no_monitor:
         monitor_script = os.path.join(os.path.dirname(__file__), "monitor.py")
         print(f"[flash] Starting monitor on {args.port}...")
-        os.execv(sys.executable, [sys.executable, monitor_script,
-                                   "--port", args.port])
+        sys.stdout.flush()
+        sys.stderr.flush()
+        monitor_cmd = [sys.executable, monitor_script, "--port", args.port]
+        if args.timeout:
+            monitor_cmd += ["--timeout", str(args.timeout)]
+        os.execv(sys.executable, monitor_cmd)
 
 
 if __name__ == "__main__":

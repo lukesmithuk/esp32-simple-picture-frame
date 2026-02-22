@@ -211,3 +211,35 @@ There is therefore no need to accept a second ID value; `pmic_init()` checks for
 0x4A only and returns `ESP_ERR_NOT_SUPPORTED` for anything else.
 
 **Status**: Decided (Phase 2, 2026-02-22)
+
+---
+
+## ADR-014: LDO_EN_3 zeroed by pmic_sleep() silences USB-JTAG serial
+
+**Context**: During Phase 2 production-boot verification, calling `pmic_sleep()`
+before entering the debug halt loop caused the USB-JTAG serial interface to go
+silent.  No output was received from the halt loop even though the firmware was
+running.  Removing the `pmic_sleep()` call restored serial output immediately.
+
+**Finding**: `pmic_sleep()` writes 0x00 to LDO_EN_1 (0x11), LDO_EN_2 (0x12),
+and LDO_EN_3 (0x13).  The boot-time value of LDO_EN_3 is 0x03 (bits 0 and 1
+set, corresponding to DLDO1 and DLDO2).  Zeroing LDO_EN_3 disables DLDO1 and
+DLDO2.  The most likely explanation is that one or both of these rails powers
+a component in the USB-JTAG signal path on this board.
+
+**Decision**: The DLDO1/DLDO2 rail-to-pin mapping must be established from the
+schematic before `pmic_sleep()` can be safely called in production.  In the
+interim:
+- `pmic_sleep()` retains the current behaviour (zeros all three LDO_EN
+  registers) because in true production use (with `esp_deep_sleep_start()`) the
+  serial interface is irrelevant — the chip is about to power down.
+- Debug builds halt **before** `pmic_sleep()` so serial output remains
+  available for observation.
+- Once the DLDO1/DLDO2 mapping is confirmed, selectively disable only the rails
+  that are safe to cut, and add the mapping to the register map in PROGRESS.md.
+
+**Note**: DCDC_EN (0x10 = 0x34 at boot) is left untouched by `pmic_sleep()` as
+per ADR-011.  The system 3.3 V rail (DC1) must remain on through deep sleep for
+the RTC wakeup path to function.
+
+**Status**: Deferred to Phase 7 (Power Optimisation, 2026-02-22)
