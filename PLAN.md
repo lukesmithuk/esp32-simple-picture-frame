@@ -20,49 +20,47 @@ Persistent state (image index, last-display time) lives in RTC fast memory or NV
 
 ## Phases
 
-### Phase 1: Hardware Bring-Up
-Verify all peripherals are reachable and behaving as expected before writing application logic.
+### Phase 1: Hardware Bring-Up ✓ COMPLETE (2026-02-21)
+Verified all peripherals reachable. Key findings: TG28 = AXP2101 register-compatible
+(chip ID 0x4A), EPD power via TG28 ALDO3 (no GPIO), SD card is 4-bit SDIO.
 
-- [ ] I2C scan — confirm addresses for TG28 PMIC (expected 0x34), PCF85063 RTC (0x51), SHTC3 (0x70)
-- [ ] TG28 chip ID — read register 0x03; AXP2101 returns 0x47; document actual value
-- [ ] EPD power-on — assert GPIO 6 high, verify SPI comms with display controller
-- [ ] SD card mount — FAT32, read a test file
-- [ ] RTC read — confirm time registers are accessible
+### Phase 2: PMIC Driver ✓ COMPLETE (2026-02-22)
+Pure-C TG28 driver (`components/pmic/`). EPD power (ALDO3), sleep rails, production
+boot cycle verified on hardware.
 
-### Phase 2: EPD Driver
-Minimal driver to push a full-frame image to the 7.3" Spectra 6 panel.
+### Phase 3: EPD Driver ✓ COMPLETE (2026-02-22)
+Pure-C SPI driver (`components/epd/`) for the 7.3" Spectra 6 panel. SPI2 at 40 MHz
+half-duplex. Init sequence, 5000-byte chunked frame transfer, refresh, and sleep
+sequences implemented and build-verified. Hardware visual test still pending.
 
-- [ ] SPI initialisation (MOSI=11, CLK=10, CS=9, DC=8, RST=12, BUSY=13, PWR=6)
-- [ ] Panel init sequence (from Waveshare demo / aitjcize reference)
-- [ ] Full-frame write (800×480, 4bpp packed, ~192 KB framebuffer in PSRAM)
-- [ ] Busy-wait on BUSY pin (~30 s refresh)
-- [ ] Panel sleep command after refresh
-
-### Phase 3: Image Pipeline
+### Phase 4: Image Pipeline
 Convert arbitrary images to the Spectra 6 6-colour palette for display.
 
-- [ ] Define measured palette (RGB values for Black/White/Green/Blue/Red/Yellow as rendered)
-- [ ] Floyd-Steinberg dithering over 800×480 framebuffer
-- [ ] JPEG decode from SD card (esp_jpeg or libjpeg-turbo component)
-- [ ] Resize/crop to 800×480
-- [ ] End-to-end: JPEG on SD → dithered framebuffer → EPD
+- [ ] Find measured Spectra 6 palette in aitjcize epaper component
+- [ ] Floyd-Steinberg dithering in C against measured palette (PSRAM working buffer)
+- [ ] JPEG decode: `esp_jpeg_decode_one_picture()` → RGB888 in PSRAM
+- [ ] Bilinear scale (fixed-point ×1024) to fit 800×480
+- [ ] Define portrait image policy (letterbox or crop-to-fill)
+- [ ] End-to-end: JPEG on SD → decode → scale → dither → EPD
 
-### Phase 4: Wake / Sleep Cycle
-- [ ] Deep sleep entry with RTC alarm wakeup (PCF85063)
-- [ ] Persist image index across sleep (RTC RAM or NVS)
-- [ ] First-boot detection
-- [ ] Manual trigger via button (optional)
+### Phase 5: Wake / Sleep Cycle
+- [ ] Port aitjcize pcf85063.c (time read/write, OSF check)
+- [ ] Implement PCF85063 alarm registers (0x0B–0x0F, AEN bits)
+- [ ] Remove debug halt; call enter_deep_sleep() (blocked on Phase 7 DLDO rail mapping)
+- [ ] Persist image index in RTC fast memory
+- [ ] Handle first-boot detection
 
-### Phase 5: WiFi Image Fetch (optional / later)
-- [ ] WiFi STA connect
-- [ ] HTTP GET image from configurable URL
-- [ ] Fallback to SD card on failure
+### Phase 6: WiFi Image Fetch (deferred)
+- [ ] WiFi STA connect with configurable SSID/password (NVS)
+- [ ] HTTP GET raw image URL
+- [ ] Fallback to SD on HTTP failure
 
-### Phase 6: Power Optimisation
-- [ ] Measure current draw during each phase
-- [ ] Profile wake cycle wall-clock time
-- [ ] Tune sleep voltage / peripherals-off sequence via TG28
-- [ ] Estimate battery life (target: 3+ months on a 2000 mAh cell)
+### Phase 7: Power Optimisation
+- [ ] Map LDO_EN_3 DLDO1/DLDO2 rail assignments (blocks pmic_sleep() in production)
+- [ ] Map DCDC_EN bit→rail for TG28
+- [ ] Measure sleep current (target < 100 µA)
+- [ ] Measure wake cycle duration and peak current
+- [ ] Project battery life against 2000 mAh target
 
 ## Milestones
 
@@ -71,7 +69,8 @@ Convert arbitrary images to the Spectra 6 6-colour palette for display.
 | 1 | All peripherals confirmed reachable via I2C scan | **DONE** (2026-02-21) |
 | 2 | PMIC driver: EPD power + sleep sequence working | **DONE** (2026-02-22) |
 | 2a | Production boot verified on hardware (pmic_init + EPD power cycle) | **DONE** (2026-02-22) |
-| 3 | Static test image displayed on EPD | pending |
+| 3 | EPD driver implemented; build clean | **DONE** (2026-02-22) |
+| 3a | Solid colour fills verified visually on hardware | pending |
 | 4 | SD-card JPEG rendered on EPD end-to-end | pending |
 | 5 | Device wakes, updates, sleeps reliably 10× in a row | pending |
 | 6 | Battery life estimate validated against target | pending |

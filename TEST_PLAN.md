@@ -52,20 +52,28 @@ verify SDA/SCL pin mapping in schematic, try lower I2C frequency (100 kHz).
 
 ---
 
-## T4 — EPD Power & SPI Connectivity
+## T4 — EPD Driver (Phase 3)
 
-**Goal**: Confirm the e-paper display powers on and SPI is functional.
+**Goal**: Confirm EPD powers on via PMIC ALDO3, SPI is functional, and all 6 colours display.
+
+**Note**: EPD power is via TG28 ALDO3 (I2C-controlled LDO) — there is no EPD power GPIO.
+The `epd_run_tests()` function (CONFIG_TEST_MODE=y) automates T4.2–T4.7.
 
 | Step | Action | Pass Criterion |
 |------|--------|----------------|
-| T4.1 | Drive GPIO 6 high | No crash; BUSY pin changes state within 1 s |
-| T4.2 | Send EPD init sequence via SPI | No SPI timeout errors in log |
-| T4.3 | Display full-black frame | Panel refreshes (~30 s), uniform black result |
-| T4.4 | Display full-white frame | Panel refreshes, uniform white result |
-| T4.5 | Send panel sleep command | BUSY pin goes low, no high-voltage damage over 1 hour |
+| T4.1 | `pmic_epd_power(pmic, true)` then `epd_init()` | No errors in log; BUSY goes HIGH after init |
+| T4.2 | `epd_run_tests()` — solid black frame | Panel refreshes (~30 s), uniform black |
+| T4.3 | Solid white frame | Panel refreshes, uniform white |
+| T4.4 | Solid red frame | Panel refreshes, uniform red |
+| T4.5 | Solid green frame | Panel refreshes, uniform green |
+| T4.6 | Solid blue frame | Panel refreshes, uniform blue |
+| T4.7 | Solid yellow frame | Panel refreshes, uniform yellow |
+| T4.8 | `epd_sleep()` then `pmic_epd_power(pmic, false)` | No crash; ALDO3 disabled cleanly |
+| T4.9 | Measure refresh time with stopwatch | 25–35 s (expect ~30 s) |
 
 **Failure action**: Verify SPI pin mapping (MOSI=11, CLK=10, CS=9, DC=8, RST=12, BUSY=13).
-Check GPIO 6 drive strength. Compare init sequence byte-for-byte against Waveshare demo.
+Check ALDO3 is enabled before SPI. Confirm BUSY poll polarity (active LOW = poll until HIGH).
+Compare init bytes against PROGRESS.md byte-for-byte.
 
 ---
 
@@ -73,15 +81,18 @@ Check GPIO 6 drive strength. Compare init sequence byte-for-byte against Wavesha
 
 **Goal**: Mount SD card and read/write files.
 
+**Note**: SD interface is **4-bit SDIO** (not SPI). Uses ESP-IDF SDMMC driver on
+GPIO38/39/40/41/1/2. Already verified in Phase 1 (14.9 GB SDHC card, /sdcard, FAT32).
+
 | Step | Action | Pass Criterion |
 |------|--------|----------------|
-| T5.1 | Mount FAT32 SD via `esp_vfs_fat` | Mount succeeds, no error log |
+| T5.1 | Mount FAT32 SD via `esp_vfs_fat` + SDMMC driver | Mount succeeds, no error log |
 | T5.2 | List root directory | File listing matches card contents |
-| T5.3 | Read a known test file | Bytes match expected content |
+| T5.3 | Read a JPEG from `/sdcard/images/` | File opens, bytes read without error |
 | T5.4 | Write a small file | File readable after unmount/remount |
 
-**Failure action**: Confirm card is FAT32 (not exFAT). Try lower SPI speed (4 MHz). Check
-SD card slot connections (uses same SPI bus as EPD or separate — confirm from schematic).
+**Failure action**: Confirm card is FAT32 (not exFAT). Check SDIO pin mapping
+(D3/CS=38, CLK=39, D0=40, CMD=41, D1=1, D2=2). Verify 0Ω R59/R60 resistors fitted.
 
 ---
 
