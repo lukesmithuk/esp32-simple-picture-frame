@@ -218,25 +218,7 @@ void app_main(void)
      */
 
 #ifdef CONFIG_TEST_MODE
-    /*
-     * Test mode: run diagnostics and return.  The device does NOT enter deep
-     * sleep — keep a serial monitor connected to observe results.
-     *
-     * EPD must be powered on before initialising the driver.
-     */
-    ESP_ERROR_CHECK(pmic_epd_power(pmic, true));
-    vTaskDelay(pdMS_TO_TICKS(2));
-
-    epd_handle_t epd;
-    ESP_ERROR_CHECK(epd_init(&epd));
-
-    tests_run(pmic, epd);
-
-    ESP_ERROR_CHECK(epd_sleep(epd));
-    epd_deinit(epd);
-    ESP_ERROR_CHECK(pmic_epd_power(pmic, false));
-    pmic_deinit(pmic);
-    ESP_ERROR_CHECK(i2c_del_master_bus(bus));
+    tests_main(pmic, bus);
     ESP_LOGI(TAG, "Test mode complete — halted (reset to run again)");
     while (1) vTaskDelay(pdMS_TO_TICKS(1000));
 #endif

@@ -17,8 +17,45 @@
 #include "pmic.h"
 #include "epd.h"
 #include "esp_log.h"
+#include "esp_err.h"
+#include "driver/i2c_master.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 static const char *TAG = "tests";
+
+void tests_main(pmic_handle_t pmic, i2c_master_bus_handle_t bus)
+{
+    /*
+     * EPD power comes from TG28 ALDO3 (I2C-controlled LDO) — there is no
+     * dedicated EPD power GPIO.  The rail must be stable before the SPI
+     * bus is touched, so a short settle delay follows the enable call.
+     */
+    ESP_ERROR_CHECK(pmic_epd_power(pmic, true));
+    vTaskDelay(pdMS_TO_TICKS(2));
+
+    /*
+     * epd_init() configures the SPI bus and GPIO lines, hardware-resets
+     * the panel, and runs the full init sequence ending with POWER_ON.
+     * The panel is ready to accept pixel data after this returns.
+     */
+    epd_handle_t epd;
+    ESP_ERROR_CHECK(epd_init(&epd));
+
+    tests_run(pmic, epd);
+
+    /*
+     * Orderly teardown: put the panel into deep sleep before cutting its
+     * power rail, then release all driver handles.  Order matters — the
+     * EPD SPI driver must be freed before pmic_deinit releases the I2C
+     * device handle, and the I2C bus handle must be the last thing freed.
+     */
+    ESP_ERROR_CHECK(epd_sleep(epd));
+    epd_deinit(epd);
+    ESP_ERROR_CHECK(pmic_epd_power(pmic, false));
+    pmic_deinit(pmic);
+    ESP_ERROR_CHECK(i2c_del_master_bus(bus));
+}
 
 void tests_run(pmic_handle_t pmic, epd_handle_t epd)
 {

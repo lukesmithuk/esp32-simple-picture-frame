@@ -113,6 +113,8 @@ python3 monitor.py                # run until Ctrl-C
 exits immediately when run non-interactively (e.g. from a script or Claude Code).
 Use `flash.py` + `monitor.py` instead.
 
+**IDF v6 component names** (differ from IDF v5 — use in `REQUIRES` lists): `esp_driver_i2c` (not `driver`), `esp_driver_spi`, `esp_driver_gpio`, `log` (not `esp_log`), `esp_hw_support` (has `esp_sleep.h`), `heap` (for `heap_caps_malloc`). Header `#include` paths are unchanged.
+
 ### Helper Scripts
 
 Two small Python scripts wrap esptool and serial I/O for this project.
@@ -205,3 +207,5 @@ Waveshare also provides:
 - **E-paper care**: Set display to sleep mode or power off after refresh. Leaving in high-voltage state can damage the panel.
 - **SD card format**: FAT32 only. Use `esp_vfs_fat` ESP-IDF component.
 - **WiFi**: Standard ESP-IDF WiFi STA mode for network image fetching.
+- **SPI single-byte commands**: use `SPI_TRANS_USE_TXDATA` flag with `t.tx_data = {byte}` rather than `t.tx_buffer = &local_var` — stores the byte in the transaction descriptor, bypasses DMA for ≤4-byte transfers, avoids a bounce-buffer alloc on every command.
+- **PSRAM + SPI DMA**: `heap_caps_malloc(size, MALLOC_CAP_SPIRAM)` is sufficient for SPI framebuffer transfers on ESP32-S3; no need for `MALLOC_CAP_DMA`. ESP32-S3 EDMA makes PSRAM DMA-accessible; IDF driver handles the descriptor chain automatically.
