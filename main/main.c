@@ -87,23 +87,44 @@ static i2c_master_bus_handle_t i2c_bus_init(void)
     return bus;
 }
 
-/* ── Wakeup source ───────────────────────────────────────────────────────── */
+/* ── Deep sleep ──────────────────────────────────────────────────────────── */
 
-static void configure_wakeup(void)
+/*
+ * enter_deep_sleep() — shut down peripherals and enter deep sleep.
+ *
+ * Call order matters:
+ *  1. pmic_sleep()          — disable LDO rails (ALDO3/EPD_VCC and others).
+ *                             NOTE: zeroes LDO_EN_3 which disables DLDO1/DLDO2;
+ *                             their rail mapping is unknown (ADR-014).  Safe in
+ *                             production because the chip is about to power down,
+ *                             but do NOT call this before any code that needs
+ *                             serial output — it silences the USB-JTAG interface.
+ *  2. pmic_deinit()         — release I2C device handle.
+ *  3. i2c_del_master_bus()  — release I2C bus handle.
+ *  4. EXT0 wakeup config    — GPIO6 (PCF85063 INT, active LOW).
+ *  5. esp_deep_sleep_start() — never returns.
+ *
+ * On wakeup: PCF85063 drives GPIO6 LOW → cold boot → app_main() from top.
+ */
+static void enter_deep_sleep(pmic_handle_t pmic, i2c_master_bus_handle_t bus)
 {
+    ESP_ERROR_CHECK(pmic_sleep(pmic));
+    pmic_deinit(pmic);
+    ESP_ERROR_CHECK(i2c_del_master_bus(bus));
+
     /*
      * Configure EXT0 wakeup on GPIO6 (PCF85063 INT, active LOW).
      *
-     * The PCF85063 holds the INT line LOW until the alarm flag is cleared.
-     * We configure wakeup on the LOW level so the chip wakes as soon as the
-     * alarm fires.  The alarm flag must be cleared early in app_main() on the
-     * next boot to prevent an immediate re-wakeup.
-     *
-     * Phase 5 will add the alarm-flag clear and full RTC alarm programming.
-     * For now this stub just registers the wakeup source.
+     * The PCF85063 holds INT low until the alarm flag is cleared in the next
+     * boot's app_main().  Phase 5 will add alarm programming and flag clear.
      */
     ESP_ERROR_CHECK(esp_sleep_enable_ext0_wakeup(RTC_INT_GPIO, 0 /* active LOW */));
-    ESP_LOGI(TAG, "wakeup: EXT0 on GPIO%d (PCF85063 INT, active LOW)", RTC_INT_GPIO);
+    ESP_LOGI(TAG, "wakeup configured: EXT0 GPIO%d (PCF85063 INT, active LOW)",
+             RTC_INT_GPIO);
+
+    ESP_LOGI(TAG, "entering deep sleep — goodbye");
+    esp_deep_sleep_start();
+    /* Never reached */
 }
 
 /* ── Update decision ─────────────────────────────────────────────────────── */
@@ -158,7 +179,7 @@ void app_main(void)
      */
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, " Picture frame boot");
-    ESP_LOGI(TAG, " Wakeup cause: %d", (int)esp_sleep_get_wakeup_cause());
+    ESP_LOGI(TAG, " Wakeup cause: 0x%02lx", esp_sleep_get_wakeup_causes());
     ESP_LOGI(TAG, "========================================");
 
     /* Shared I2C bus — passed to each peripheral driver */
@@ -201,23 +222,21 @@ void app_main(void)
      */
 
     /*
-     * Prepare for deep sleep:
-     *  1. Disable LDO rails via PMIC (ALDO3 and others off; DC1 stays on)
-     *  2. Configure EXT0 wakeup on PCF85063 INT (GPIO6, active LOW)
-     *  3. Release software handles (optional — reset clears them anyway)
-     *  4. Enter deep sleep — this call never returns
-     *
-     * On wakeup: PCF85063 drives GPIO6 LOW → chip cold-boots → app_main()
-     * runs again from the top.
+     * TEMPORARY: halt before enter_deep_sleep() so the USB-JTAG serial
+     * interface stays active for debugging.  See ADR-014: pmic_sleep() zeros
+     * LDO_EN_3 (DLDO1/DLDO2), which silences serial output.  Reinstate
+     * enter_deep_sleep() once DLDO rail mapping is confirmed (Phase 7).
      */
-    ESP_ERROR_CHECK(pmic_sleep(pmic));
-    pmic_deinit(pmic);
-    i2c_del_master_bus(bus);
+    ESP_LOGI(TAG, "halting before sleep (debug build) — reset to run again");
+    for (int i = 0; ; i++) {
+        vTaskDelay(pdMS_TO_TICKS(5000));
+        ESP_LOGI(TAG, "halted [%d]", i);
+    }
 
-    configure_wakeup();
+    /* Phase 5: set next RTC alarm before sleeping
+     *   rtc_set_alarm_tomorrow_8am(rtc);
+     *   rtc_deinit(rtc);
+     */
 
-    ESP_LOGI(TAG, "entering deep sleep — goodbye");
-    esp_deep_sleep_start();
-
-    /* Never reached */
+    enter_deep_sleep(pmic, bus);
 }

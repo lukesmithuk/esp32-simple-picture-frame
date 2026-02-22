@@ -29,6 +29,11 @@ Move completed items to PROGRESS.md.
 - [x] Test mode: CONFIG_TEST_MODE Kconfig option + tests.c framework
 - [x] Component structure: components/pmic/ with CMakeLists.txt
 - [x] Verify wakeup chain from schematic: PCF85063 INTB → **GPIO6 directly** (confirmed from schematic)
+- [x] Verify production boot cycle on hardware — pmic_init + EPD power cycle confirmed working
+- [x] Refactor sleep sequence into enter_deep_sleep(pmic, bus) helper in main.c (ADR-014)
+- [x] Document flash/boot procedure: cold USB plug required for clean I2C; BOOT+USB replug
+      leaves I2C in bad state; esptool hard-reset via USB-JTAG lands in download mode
+- [x] flash.py: add --timeout passthrough to monitor.py; flush stdout before os.execv
 
 ## Phase 3 — EPD Driver
 
@@ -74,7 +79,9 @@ must implement from scratch using PCF85063 datasheet registers 0x0B–0x0F.
   - 0x0F: weekday alarm (AEN bit 7)
   - Clear alarm flag in Control_2 (reg 0x01, AF bit)
 - [x] Determine wakeup GPIO from schematic: **GPIO6** (PCF85063 INT direct, confirmed)
-- [ ] Implement deep sleep with EXT0/EXT1 wakeup on GPIO6 (PCF85063 INT, active LOW)
+- [x] Implement EXT0 wakeup config on GPIO6 (PCF85063 INT, active LOW) — in enter_deep_sleep()
+- [ ] Implement deep sleep: remove debug halt in main.c, call enter_deep_sleep() directly
+      (blocked on ADR-014: must map LDO_EN_3 DLDO1/DLDO2 rails first — see Phase 7)
 - [ ] Implement TG28 sleep sequence in C (adapt aitjcize axp2101_basic_sleep_start logic)
 - [ ] Test: set 60s alarm, enter deep sleep, verify wakeup and alarm cause logged
 - [ ] Persist image index in RTC fast memory (8KB, survives deep sleep)
@@ -88,6 +95,11 @@ must implement from scratch using PCF85063 datasheet registers 0x0B–0x0F.
 
 ## Phase 7 — Power / Battery Life
 
+- [ ] Map LDO_EN_3 (reg 0x13) DLDO1/DLDO2 rail assignments from schematic
+      Boot-time value: 0x03 (DLDO1 bit0 + DLDO2 bit1). pmic_sleep() zeros this,
+      which silences USB-JTAG serial output (ADR-014). Must identify what each rail
+      powers before enabling pmic_sleep() in production. Debug build halts before
+      pmic_sleep() until resolved.
 - [ ] Determine DCDC_EN (reg 0x10) bit→rail mapping on TG28
       Boot-time value: 0x34 (bits 2, 4, 5 set).  DC1 (3.3V system) must be on,
       but bit0=0, so DC1 does not map to bit0.  Mapping unclear — touching this
