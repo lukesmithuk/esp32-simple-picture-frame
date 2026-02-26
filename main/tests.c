@@ -26,38 +26,18 @@ static const char *TAG = "tests";
 
 void tests_main(pmic_handle_t pmic, i2c_master_bus_handle_t bus)
 {
-    /*
-     * EPD power comes from TG28 ALDO3 (I2C-controlled LDO) — there is no
-     * dedicated EPD power GPIO.  The rail must be stable before the SPI
-     * bus is touched, so a short settle delay follows the enable call.
-     */
-    ESP_ERROR_CHECK(pmic_epd_power(pmic, true));
-    vTaskDelay(pdMS_TO_TICKS(2));
+    tests_run(pmic);
 
     /*
-     * epd_init() configures the SPI bus and GPIO lines, hardware-resets
-     * the panel, and runs the full init sequence ending with POWER_ON.
-     * The panel is ready to accept pixel data after this returns.
+     * Orderly teardown: tests_run() has already powered off the EPD and
+     * freed its handles.  Release pmic and I2C bus last.
+     * I2C bus handle must be freed after all device handles that use it.
      */
-    epd_handle_t epd;
-    ESP_ERROR_CHECK(epd_init(&epd));
-
-    tests_run(pmic, epd);
-
-    /*
-     * Orderly teardown: put the panel into deep sleep before cutting its
-     * power rail, then release all driver handles.  Order matters — the
-     * EPD SPI driver must be freed before pmic_deinit releases the I2C
-     * device handle, and the I2C bus handle must be the last thing freed.
-     */
-    ESP_ERROR_CHECK(epd_sleep(epd));
-    epd_deinit(epd);
-    ESP_ERROR_CHECK(pmic_epd_power(pmic, false));
     pmic_deinit(pmic);
     ESP_ERROR_CHECK(i2c_del_master_bus(bus));
 }
 
-void tests_run(pmic_handle_t pmic, epd_handle_t epd)
+void tests_run(pmic_handle_t pmic)
 {
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, " Test mode");
@@ -72,10 +52,32 @@ void tests_run(pmic_handle_t pmic, epd_handle_t epd)
         failed++;
 
     /* ── EPD ── */
+    /*
+     * EPD is initialised here — after PMIC tests — not before.
+     *
+     * pmic_run_tests() (test 4) power-cycles ALDO3 (the EPD supply rail).
+     * If epd_init() were called before pmic_run_tests(), the panel would
+     * lose power mid-session and end up in an uninitialised state; every
+     * subsequent SPI command would be silently ignored and every BUSY wait
+     * would time out.  Initialising the panel here, with the ALDO3 rail
+     * stable, avoids this entirely.
+     *
+     * Allow 50 ms for the rail to settle before starting the init sequence.
+     */
+    ESP_ERROR_CHECK(pmic_epd_power(pmic, true));
+    vTaskDelay(pdMS_TO_TICKS(50));
+    epd_handle_t epd;
+    ESP_ERROR_CHECK(epd_init(&epd));
+
     if (epd_run_tests(epd) == ESP_OK)
         passed++;
     else
         failed++;
+
+    /* Orderly EPD teardown before PMIC tests might alter rails further */
+    ESP_ERROR_CHECK(epd_sleep(epd));
+    epd_deinit(epd);
+    ESP_ERROR_CHECK(pmic_epd_power(pmic, false));
 
     /*
      * Future phases add their test calls here:

@@ -21,14 +21,15 @@
 /* ── SPI configuration ───────────────────────────────────────────────────── */
 
 #define EPD_SPI_HOST      SPI2_HOST
-#define EPD_SPI_FREQ_HZ   (40 * 1000 * 1000)   /* 40 MHz, per Waveshare spec */
+#define EPD_SPI_FREQ_HZ   (10 * 1000 * 1000)   /* 10 MHz */
 
 /*
- * EPD_CHUNK_SIZE — bytes per SPI transaction when streaming frame data.
+ * EPD_CHUNK_SIZE — bytes per SPI sub-transaction when streaming frame data.
  *
- * Both reference implementations (aitjcize and Waveshare Jan 2026) use 5000-
- * byte chunks.  A single large DMA transfer of the full 192 KB frame may be
- * possible on ESP32-S3 with EDMA (PSRAM → SPI2) — see TODO.md backlog.
+ * The IDF SPI driver has a per-transaction hardware limit well below the
+ * 192 KB framebuffer, so the frame is sent in chunks.  CS is driven as a
+ * plain GPIO (spics_io_num = -1) and held LOW for the entire frame across
+ * all chunks, so the panel sees one continuous data stream.
  */
 #define EPD_CHUNK_SIZE    5000u
 
