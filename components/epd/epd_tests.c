@@ -7,6 +7,19 @@
  * triggers a full panel refresh (~30 s), so the full suite takes ~3 minutes.
  * Results require visual verification — check that the panel renders each
  * colour cleanly with no artefacts or bleed from adjacent colours.
+ *
+ * Test lifecycle
+ * --------------
+ * Each colour fill is run via run_test(), which wraps it with:
+ *
+ *   setup()    — log test start; the EPD must be idle (BUSY HIGH) entering here,
+ *                which is guaranteed because epd_init() and every epd_display()
+ *                call both wait for BUSY before returning
+ *   test fn()  — fill framebuffer and call epd_display()
+ *   teardown() — log result and pause for visual inspection
+ *
+ * If a test fails (epd_display returns error), the teardown logs the failure.
+ * The suite aborts on first failure to avoid pushing frames to a stuck panel.
  */
 
 #include "epd.h"
@@ -18,6 +31,70 @@
 #include "freertos/task.h"
 
 static const char *TAG = "epd";
+
+/* ── Setup / teardown ────────────────────────────────────────────────────── */
+
+static void setup(int n, int total, const char *colour)
+{
+    /*
+     * The EPD must be idle (BUSY HIGH) before each test.  This is guaranteed
+     * by the contract of epd_init() and epd_display(): both wait for BUSY
+     * before returning.  Log the upcoming test so the tester knows what to
+     * expect on the panel.
+     */
+    ESP_LOGI(TAG, "--- EPD test [%d/%d]: %s ---", n, total, colour);
+}
+
+static void teardown(int n, int total, const char *colour, bool passed)
+{
+    if (passed) {
+        ESP_LOGI(TAG, "  [%d/%d] %s — verify visually; continuing in 2 s",
+                 n, total, colour);
+        vTaskDelay(pdMS_TO_TICKS(2000));
+    } else {
+        ESP_LOGE(TAG, "  [%d/%d] %s — FAILED; aborting suite", n, total, colour);
+    }
+}
+
+/* Context passed into each test function */
+struct epd_test_ctx {
+    epd_handle_t h;
+    uint8_t     *fb;
+    uint8_t      colour_index;
+};
+
+static bool run_test(int n, int total, const char *colour,
+                     bool (*fn)(const struct epd_test_ctx *),
+                     const struct epd_test_ctx *ctx)
+{
+    setup(n, total, colour);
+    bool result = fn(ctx);
+    teardown(n, total, colour, result);
+    return result;
+}
+
+/* ── Individual test function ────────────────────────────────────────────── */
+
+static bool test_solid_fill(const struct epd_test_ctx *ctx)
+{
+    /*
+     * Pixel format: 4bpp packed, two pixels per byte, high nibble first.
+     * For a solid fill, both nibbles hold the same colour index.
+     */
+    uint8_t packed = (uint8_t)((ctx->colour_index << 4) | ctx->colour_index);
+    memset(ctx->fb, packed, EPD_FB_SIZE);
+
+    ESP_LOGI(TAG, "  index %u, byte 0x%02X — refreshing...", ctx->colour_index, packed);
+
+    esp_err_t err = epd_display(ctx->h, ctx->fb, EPD_FB_SIZE);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "  epd_display failed: %s", esp_err_to_name(err));
+        return false;
+    }
+    return true;
+}
+
+/* ── Entry point ─────────────────────────────────────────────────────────── */
 
 esp_err_t epd_run_tests(epd_handle_t h)
 {
@@ -35,11 +112,6 @@ esp_err_t epd_run_tests(epd_handle_t h)
         return ESP_ERR_NO_MEM;
     }
 
-    /*
-     * All six Spectra 6 palette colours, in display order.  Each entry maps
-     * a colour index constant (defined in epd.h) to a human-readable name
-     * for the log output.
-     */
     static const struct { uint8_t index; const char *name; } colours[] = {
         { EPD_COLOR_BLACK,  "black"  },
         { EPD_COLOR_WHITE,  "white"  },
@@ -48,36 +120,19 @@ esp_err_t epd_run_tests(epd_handle_t h)
         { EPD_COLOR_BLUE,   "blue"   },
         { EPD_COLOR_YELLOW, "yellow" },
     };
+    const int total = (int)(sizeof(colours) / sizeof(colours[0]));
 
     bool pass = true;
-    for (int i = 0; i < (int)(sizeof(colours) / sizeof(colours[0])); i++) {
-        uint8_t idx    = colours[i].index;
-        /*
-         * Pixel format is 4bpp packed: two pixels per byte, high nibble
-         * first.  For a solid fill, both nibbles hold the same index,
-         * so the packed byte is (idx << 4) | idx.
-         */
-        uint8_t packed = (uint8_t)((idx << 4) | idx);
-        memset(fb, packed, EPD_FB_SIZE);
-
-        ESP_LOGI(TAG, "  [%d/6] %s (index %u, byte 0x%02X) — refreshing...",
-                 i + 1, colours[i].name, idx, packed);
-
-        esp_err_t err = epd_display(h, fb, EPD_FB_SIZE);
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "  [FAIL] epd_display: %s", esp_err_to_name(err));
+    for (int i = 0; i < total; i++) {
+        struct epd_test_ctx ctx = {
+            .h            = h,
+            .fb           = fb,
+            .colour_index = colours[i].index,
+        };
+        if (!run_test(i + 1, total, colours[i].name, test_solid_fill, &ctx)) {
             pass = false;
             break;
         }
-
-        /*
-         * Brief pause after each refresh so the tester can inspect the
-         * panel before the next colour overwrites it.  epd_display() has
-         * already waited for the BUSY line, so the panel is idle here.
-         */
-        ESP_LOGI(TAG, "  [%d/6] %s — verify visually, continuing in 2 s",
-                 i + 1, colours[i].name);
-        vTaskDelay(pdMS_TO_TICKS(2000));
     }
 
     heap_caps_free(fb);

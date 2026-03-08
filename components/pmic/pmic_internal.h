@@ -19,18 +19,22 @@
 
 /* ── Register addresses (hardware-confirmed on TG28) ─────────────────────── */
 
-#define REG_CHIP_ID     0x03
-#define REG_LDO_EN_1    0x11   /* ALDO1 = bit0, ALDO2 = bit1, … */
-#define REG_LDO_EN_2    0x12   /* ALDO3 = bit2, ALDO4 = bit3, BLDO1 = bit4, BLDO2 = bit5 */
-#define REG_LDO_EN_3    0x13   /* DLDO1 = bit0, DLDO2 = bit1, CPUSLDO = bit6 */
-#define REG_ALDO3_VOLT  0x1C   /* [4:0] = (mV - 500) / 100 */
-#define REG_IRQ_EN_1    0x40
+#define REG_CHIP_ID         0x03
+#define REG_LDO_EN_1        0x11   /* ALDO1 = bit0, ALDO2 = bit1, … */
+#define REG_LDO_EN_2        0x12   /* ALDO3 = bit2, ALDO4 = bit3, BLDO1 = bit4, BLDO2 = bit5 */
+#define REG_LDO_EN_3        0x13   /* DLDO1 = bit0, DLDO2 = bit1, CPUSLDO = bit6 */
+#define REG_ALDO3_VOLT      0x1C   /* [4:0] = (mV - 500) / 100 */
+#define REG_ALDO4_VOLT      0x1D   /* [4:0] = (mV - 500) / 100 — same encoding as ALDO3 */
+#define REG_VBUS_CUR_LIM    0x16   /* bits [2:0]: 0=100mA 1=500mA 2=900mA 3=1000mA 4=1500mA 5=2000mA */
+#define REG_IRQ_EN_1        0x40
 
 /* ── Register values ─────────────────────────────────────────────────────── */
 
 #define CHIP_ID_TG28        0x4A   /* TG28 and AXP2101 both report 0x4A */
 #define BIT_ALDO3_EN        (1u << 2)   /* LDO_EN_2 bit 2 */
-#define ALDO3_VOLT_CODE_3V3 28u         /* (3300 - 500) / 100 = 28 → 3.3 V */
+#define BIT_ALDO4_EN        (1u << 3)   /* LDO_EN_2 bit 3 */
+#define ALDO_VOLT_CODE_3V3  28u         /* (3300 - 500) / 100 = 28 → 3.3 V */
+#define ALDO3_VOLT_CODE_3V3 ALDO_VOLT_CODE_3V3   /* backwards-compat alias */
 
 /* ── Driver state ────────────────────────────────────────────────────────── */
 

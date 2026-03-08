@@ -4,6 +4,67 @@ Completed work, findings, and session notes. Newest entries at the top.
 
 ---
 
+## 2026-03-02 — EPD display NEVER verified with our firmware; BUSY-stuck investigation
+
+### Correction: display was never updated with our firmware
+
+The 2026-02-22 Phase 3 entry implies the EPD driver was successfully tested on hardware.
+**This is incorrect.** The display has **never been visually updated with our firmware builds.**
+The Phase 3 entry documents code that builds clean — nothing more.
+
+For comparison: the aitjcize/esp32-photoframe firmware, when flashed to the same hardware,
+drives the display correctly. This confirms the hardware is functional and the panel, PMIC,
+and wiring are all good. The problem is specific to our firmware.
+
+### BUSY-stuck symptom
+
+After `epd_init()` returns (which waits for BUSY after PON), calling `epd_display()` sends
+the 192 KB frame and issues `0x04` (POWER_ON). The BUSY pin then stays LOW indefinitely —
+never returning HIGH to indicate the panel has finished processing. The driver logs a timeout
+error after 400 seconds (increased from 60s during diagnosis):
+
+```
+I epd: waiting BUSY... (5 s)
+I epd: waiting BUSY... (10 s)
+...
+E epd: BUSY timeout after 400 s
+```
+
+### Investigation so far (2026-03-02)
+
+**Confirmed aitjcize `driver_ed2208_gca.c` is the correct reference** — it is the working
+firmware on our hardware. The Waveshare `EPD_7in3e.c` was initially used as reference
+but its init and refresh sequences differ from aitjcize and were ultimately wrong.
+
+**Init sequence now matches aitjcize exactly**:
+- `0xAA {49 55 20 08 09 18}` → `0x01 {3F 00 32 2A 0E 2A}` → `0x00 {5F 69}` → `0x03 {00 54 00 44}`
+- `0x05 {40 1F 1F 2C}` → `0x06 {6F 1F 16 25}` → `0x08 {6F 1F 1F 22}`
+- `0x13 {00 04}` → `0x30 {02}` → `0x41 {00}` → `0x50 {3F}` → `0x60 {02 00}` → `0x61 {03 20 01 E0}`
+- `0x82 {1E}` → `0x84 {01}` → `0x86 {00}` → `0xE3 {2F}` → `0xE0 {00}` → `0xE6 {00}`
+- `0x04` (POWER_ON) → wait BUSY
+
+**Refresh sequence now matches aitjcize exactly**:
+`0x10` + 192KB frame data → `0x04` PON → wait BUSY → `0x12 {00}` DRF → wait BUSY → `0x02 {00}` POF → wait BUSY
+
+Note: an earlier (wrong) attempt added `0x06 {6F 1F 17 49}` between PON and DRF based on the
+Waveshare reference. This was reverted — aitjcize has no `0x06` in the refresh sequence.
+
+**`vTaskDelay(1)` every 10 chunks added**: aitjcize `send_buffer()` yields to the watchdog
+every 10 × 5000-byte chunks during the frame transfer. Our code was missing this.
+Added — but this change has not yet been tested on hardware.
+
+**SPI config**: SPI2_HOST, 10 MHz, mode 0, half-duplex, `spics_io_num = -1` (manual CS),
+5000-byte chunk size, `SPI_DMA_CH_AUTO`. All matches aitjcize.
+
+### Still to investigate
+
+- Flash and test the `vTaskDelay` fix on hardware
+- Check whether PMIC state differs between our firmware and aitjcize when EPD SPI begins
+  (aitjcize uses XPowersLib which may fail silently on TG28 and leave ALDO3 in a different state)
+- Check BUSY line continuity / pull-up (panel may not be receiving power correctly despite ALDO3 read-back)
+
+---
+
 ## 2026-02-22 — Phase 3 complete: EPD driver implemented
 
 ### EPD driver component (`components/epd/`)

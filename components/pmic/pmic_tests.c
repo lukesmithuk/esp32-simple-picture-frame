@@ -4,6 +4,24 @@
  * Implements pmic_run_tests(), declared in pmic.h.
  * Uses pmic_internal.h for direct register access so tests can verify
  * hardware state independently of the public API.
+ *
+ * Test lifecycle
+ * --------------
+ * Every individual test is run via run_test(), which wraps it with:
+ *
+ *   setup()    — write the known pre-test PMIC state
+ *   test fn()  — the actual test logic
+ *   teardown() — write the known post-test PMIC state (identical to setup)
+ *
+ * Because setup and teardown establish the same explicit state, every test
+ * starts from a clean slate and leaves the board in a clean slate.  There is
+ * no save/restore: if the correct state is written unconditionally, it is
+ * always correct regardless of what the test did.
+ *
+ * Known state before and after each test:
+ *   - ALDO3 (EPD_VCC) off  — EPD has no power; avoids interference from
+ *                            ALDO3 state left by a previous run
+ *   - IRQ_EN_1 (0x40) = 0xFF — all IRQs enabled (power-on default)
  */
 
 #include "pmic.h"
@@ -14,6 +32,32 @@
 #include "freertos/task.h"
 
 static const char *TAG = "pmic";
+
+/* ── Setup / teardown ────────────────────────────────────────────────────── */
+
+/* Establish the known pre/post-test PMIC state. */
+static void setup(pmic_handle_t h)
+{
+    pmic_epd_power(h, false);           /* ALDO3 off */
+    reg_write(h, REG_IRQ_EN_1, 0xFF);   /* IRQs at default */
+}
+
+static void teardown(pmic_handle_t h)
+{
+    pmic_epd_power(h, false);           /* ALDO3 off */
+    reg_write(h, REG_IRQ_EN_1, 0xFF);   /* IRQs at default */
+}
+
+/*
+ * run_test — execute one test function wrapped in setup/teardown.
+ */
+static bool run_test(pmic_handle_t h, bool (*fn)(pmic_handle_t))
+{
+    setup(h);
+    bool result = fn(h);
+    teardown(h);
+    return result;
+}
 
 /* ── Individual test functions ───────────────────────────────────────────── */
 
@@ -34,10 +78,10 @@ static bool test_register_probe(pmic_handle_t h)
 {
     ESP_LOGI(TAG, "--- PMIC test 2: register probe ---");
     static const struct { uint8_t reg; const char *name; } probes[] = {
-        { 0x00, "PMU_STATUS_1" }, { 0x01, "PMU_STATUS_2" }, { 0x03, "CHIP_ID"   },
-        { 0x10, "DCDC_EN"      }, { 0x11, "LDO_EN_1"    }, { 0x12, "LDO_EN_2"  },
-        { 0x13, "LDO_EN_3"     }, { 0x1C, "ALDO3_VOLT"  }, { 0x40, "IRQ_EN_1"  },
-        { 0x41, "IRQ_EN_2"     },
+        { 0x00, "PMU_STATUS_1" }, { 0x01, "PMU_STATUS_2" }, { 0x03, "CHIP_ID"      },
+        { 0x10, "DCDC_EN"      }, { 0x11, "LDO_EN_1"    }, { 0x12, "LDO_EN_2"    },
+        { 0x13, "LDO_EN_3"     }, { 0x16, "VBUS_CUR_LIM" }, { 0x1C, "ALDO3_VOLT" },
+        { 0x1D, "ALDO4_VOLT"   }, { 0x40, "IRQ_EN_1"    }, { 0x41, "IRQ_EN_2"    },
     };
     bool pass = true;
     for (int i = 0; i < (int)(sizeof(probes) / sizeof(probes[0])); i++) {
@@ -57,40 +101,34 @@ static bool test_register_probe(pmic_handle_t h)
 
 static bool test_write_readback(pmic_handle_t h)
 {
-    ESP_LOGI(TAG, "--- PMIC test 3: write/readback/restore (IRQ_EN_1 0x40) ---");
+    ESP_LOGI(TAG, "--- PMIC test 3: write/readback (IRQ_EN_1 0x40) ---");
 
-    uint8_t orig = 0;
-    esp_err_t err = reg_read(h, REG_IRQ_EN_1, &orig);
-    if (err != ESP_OK) {
-        /* Cannot safely proceed: restoring an unknown value would write garbage */
-        ESP_LOGE(TAG, "  [FAIL] initial read failed: %s", esp_err_to_name(err));
+    /* setup() guarantees IRQ_EN_1 = 0xFF entering here */
+    uint8_t orig = 0xFF;
+
+    reg_write(h, REG_IRQ_EN_1, 0x00);
+    uint8_t rb_zero = 0;
+    reg_read(h, REG_IRQ_EN_1, &rb_zero);
+
+    reg_write(h, REG_IRQ_EN_1, orig);
+    uint8_t rb_orig = 0;
+    reg_read(h, REG_IRQ_EN_1, &rb_orig);
+
+    if (rb_zero != 0x00 || rb_orig != orig) {
+        ESP_LOGE(TAG, "  [FAIL] wrote 0x00 rb=0x%02X, wrote 0xFF rb=0x%02X",
+                 rb_zero, rb_orig);
         return false;
     }
-
-    reg_write(h, REG_IRQ_EN_1, (uint8_t)~orig);
-    uint8_t rb_written = 0;
-    reg_read(h, REG_IRQ_EN_1, &rb_written);
-
-    reg_write(h, REG_IRQ_EN_1, orig);   /* always restore regardless of outcome */
-    uint8_t rb_restored = 0;
-    reg_read(h, REG_IRQ_EN_1, &rb_restored);
-
-    if (rb_written != (uint8_t)~orig || rb_restored != orig) {
-        ESP_LOGE(TAG, "  [FAIL] orig=0x%02X wrote=0x%02X rb=0x%02X restored=0x%02X",
-                 orig, (uint8_t)~orig, rb_written, rb_restored);
-        return false;
-    }
-    ESP_LOGI(TAG, "  [PASS] write/readback/restore correct");
+    ESP_LOGI(TAG, "  [PASS] write/readback correct (0x00 and 0xFF both verified)");
     return true;
 }
 
 static bool test_aldo3_power_cycle(pmic_handle_t h)
 {
     ESP_LOGI(TAG, "--- PMIC test 4: ALDO3 enable / disable ---");
-    bool pass = true;
 
-    uint8_t ldo2_before = 0;
-    reg_read(h, REG_LDO_EN_2, &ldo2_before);
+    /* setup() guarantees ALDO3 is off entering here */
+    bool pass = true;
 
     pmic_epd_power(h, true);
     uint8_t ldo2_on = 0;
@@ -112,7 +150,7 @@ static bool test_aldo3_power_cycle(pmic_handle_t h)
         ESP_LOGI(TAG, "  [PASS] ALDO3 disabled (LDO_EN_2=0x%02X)", ldo2_off);
     }
 
-    reg_write(h, REG_LDO_EN_2, ldo2_before);   /* restore original state */
+    /* teardown() will also ensure ALDO3 is off. */
     return pass;
 }
 
@@ -121,10 +159,10 @@ static bool test_aldo3_power_cycle(pmic_handle_t h)
 esp_err_t pmic_run_tests(pmic_handle_t h)
 {
     bool pass = true;
-    pass &= test_chip_id(h);
-    pass &= test_register_probe(h);
-    pass &= test_write_readback(h);
-    pass &= test_aldo3_power_cycle(h);
+    pass &= run_test(h, test_chip_id);
+    pass &= run_test(h, test_register_probe);
+    pass &= run_test(h, test_write_readback);
+    pass &= run_test(h, test_aldo3_power_cycle);
 
     if (pass)
         ESP_LOGI(TAG, "=== PMIC tests: ALL PASS ===");

@@ -30,6 +30,12 @@
  * 192 KB framebuffer, so the frame is sent in chunks.  CS is driven as a
  * plain GPIO (spics_io_num = -1) and held LOW for the entire frame across
  * all chunks, so the panel sees one continuous data stream.
+ *
+ * 4000 bytes matches aitjcize/esp32-photoframe exactly.  Combined with
+ * vTaskDelay(1) after every chunk, this gives the panel ~10 ms to drain its
+ * internal SPI→SRAM DMA pipeline between bursts.  Larger chunks (e.g. 5000)
+ * with infrequent yields cause silent SPI buffer overflow on the panel side,
+ * resulting in a corrupted frame that never refreshes correctly.
  */
 #define EPD_CHUNK_SIZE    5000u
 

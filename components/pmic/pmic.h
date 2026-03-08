@@ -119,6 +119,17 @@ esp_err_t pmic_sleep(pmic_handle_t h);
 void pmic_deinit(pmic_handle_t h);
 
 /*
+ * pmic_log_state — dump all key PMIC registers to the log.
+ *
+ * Reads and logs the current value of every register that affects power
+ * rail state.  Useful at suite boundaries in test mode, and at boot to
+ * confirm the PMIC is in the expected state.  Read-only; no side effects.
+ *
+ * @param h   Handle from pmic_init().
+ */
+void pmic_log_state(pmic_handle_t h);
+
+/*
  * pmic_run_tests — run PMIC diagnostics and log results.
  *
  * Performs:

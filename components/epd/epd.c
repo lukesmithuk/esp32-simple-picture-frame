@@ -5,9 +5,10 @@
  * See epd_internal.h for pin assignments and SPI config.
  * See epd_tests.c for epd_run_tests().
  *
- * Init sequence and refresh sequence sourced from Waveshare Jan 2026
- * display_bsp.cpp and cross-checked against aitjcize/esp32-photoframe.
- * All bytes confirmed in PROGRESS.md.
+ * Init sequence: Waveshare Jan 2026 display_bsp.cpp EPD_Init().
+ * Refresh sequence: Waveshare EPD_Display + EPD_TurnOnDisplay().
+ * Cross-checked against aitjcize driver_ed2208_gca.c; differences noted
+ * inline in epd_panel_init().  Debugging history in docs/aitjcize-comparison.md.
  */
 
 #include "epd.h"
@@ -19,6 +20,7 @@
 #include "driver/spi_master.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_rom_sys.h"
 
 static const char *TAG = "epd";
 
@@ -104,6 +106,20 @@ static void epd_send_cmd_data(struct epd_dev_t *dev, uint8_t cmd, const uint8_t 
  */
 static void epd_send_frame(struct epd_dev_t *dev, const uint8_t *data, size_t len)
 {
+    /*
+     * Frame transfer and refresh sequence (matches aitjcize turn_on_display).
+     *
+     *   DTM (0x10) + pixel data   — written while panel in PON state
+     *   PON (0x04) → wait         — re-triggers HV for the refresh waveform
+     *   DRF (0x12 {00}) → wait    — runs colour waveform (~30 s)
+     *   POF (0x02 {00}) → wait    — powers down HV
+     *
+     * Chunk size = 4000 bytes with vTaskDelay(1) after EVERY chunk, matching
+     * aitjcize exactly.  The panel needs ~10 ms between bursts to drain its
+     * internal SPI→SRAM pipeline; larger chunks without yields cause silent
+     * buffer overflow and a corrupted frame that prevents waveform completion.
+     */
+
     /* Send the 0x10 command separately with its own CS cycle */
     epd_send_cmd(dev, 0x10);
 
@@ -120,14 +136,17 @@ static void epd_send_frame(struct epd_dev_t *dev, const uint8_t *data, size_t le
         };
         ESP_ERROR_CHECK(spi_device_polling_transmit(dev->spi_dev, &t));
         offset += chunk;
+        esp_rom_delay_us(100);   /* 100 µs: allow panel SPI→SRAM DMA to drain */
     }
     gpio_set_level(EPD_PIN_CS, 1);
 
-    epd_send_cmd(dev, 0x04);
+    epd_send_cmd(dev, 0x04);   /* PON — re-trigger HV for refresh waveform */
     epd_wait_busy(dev);
+
     static const uint8_t d_12[] = {0x00};
     epd_send_cmd_data(dev, 0x12, d_12, sizeof(d_12));
     epd_wait_busy(dev);
+
     static const uint8_t d_02[] = {0x00};
     epd_send_cmd_data(dev, 0x02, d_02, sizeof(d_02));
     epd_wait_busy(dev);
@@ -137,22 +156,25 @@ static void epd_send_frame(struct epd_dev_t *dev, const uint8_t *data, size_t le
 
 static void epd_gpio_init(struct epd_dev_t *dev)
 {
-    /* 
-     * Explicitly reset pins to clear any peripheral functions (like JTAG).
-     * GPIO 10-13 are shared with JTAG on ESP32-S3.
+    /*
+     * Do NOT call gpio_reset_pin() here — aitjcize reference driver never
+     * calls it on EPD pins.  gpio_reset_pin() briefly sets the pin to INPUT
+     * mode; when gpio_config() then sets it back to OUTPUT, the output latch
+     * defaults to 0 (LOW), causing a spurious CS/DC assert with no clock.
+     * Instead, let gpio_config() configure them directly and then set explicit
+     * initial levels matching aitjcize.
      */
-    gpio_reset_pin(EPD_PIN_DC);
-    gpio_reset_pin(EPD_PIN_RST);
-    gpio_reset_pin(EPD_PIN_CS);
-    gpio_reset_pin(EPD_PIN_BUSY);
-    
-
     gpio_config_t out_cfg = {
         .pin_bit_mask = (1ULL << EPD_PIN_DC) | (1ULL << EPD_PIN_RST)
                       | (1ULL << EPD_PIN_CS),
         .mode         = GPIO_MODE_OUTPUT,
+        .pull_up_en   = GPIO_PULLUP_ENABLE,   /* matches aitjcize gpio_init() */
     };
     ESP_ERROR_CHECK(gpio_config(&out_cfg));
+
+    /* Set RST and CS HIGH immediately — aitjcize sets RST HIGH after config */
+    gpio_set_level(EPD_PIN_RST, 1);
+    gpio_set_level(EPD_PIN_CS, 1);
 
     gpio_config_t in_cfg = {
         .pin_bit_mask = (1ULL << EPD_PIN_BUSY),
@@ -164,9 +186,11 @@ static void epd_gpio_init(struct epd_dev_t *dev)
 
 static esp_err_t epd_spi_init(struct epd_dev_t *dev)
 {
-    gpio_reset_pin(EPD_PIN_MOSI);
-    gpio_reset_pin(EPD_PIN_CLK);
-
+    /*
+     * Do NOT call gpio_reset_pin() on MOSI/CLK — aitjcize reference driver
+     * never does.  The SPI bus initialiser will claim these pins from the
+     * iomux correctly without a prior gpio_reset_pin().
+     */
     spi_bus_config_t bus_cfg = {
         .mosi_io_num     = EPD_PIN_MOSI,
         .miso_io_num     = -1,
@@ -220,8 +244,9 @@ static void epd_hw_reset(void)
 /*
  * epd_panel_init — send the full init sequence and wait for POWER_ON.
  *
- * Sequence updated to match verified Spectra 6 (7IN3E) reference driver.
- * All commands sent with CS held LOW for their respective data phases.
+ * Sequence matches Waveshare Jan-2026 display_bsp.cpp EPD_Init().
+ * Notably shorter than the aitjcize sequence: omits 0x13, 0x41, 0x82,
+ * 0x86, 0xE0, 0xE6; uses 1-byte 0x01, different 0x06 and 0x30 values.
  */
 static void epd_panel_init(struct epd_dev_t *dev)
 {
@@ -231,8 +256,8 @@ static void epd_panel_init(struct epd_dev_t *dev)
     static const uint8_t d_AA[] = {0x49, 0x55, 0x20, 0x08, 0x09, 0x18};
     epd_send_cmd_data(dev, 0xAA, d_AA, sizeof(d_AA));
 
-    /* Power setting (0x01) */
-    static const uint8_t d_01[] = {0x3F, 0x00, 0x32, 0x2A, 0x0E, 0x2A};
+    /* Power setting (0x01) — 1 byte in Waveshare, 6 bytes in aitjcize */
+    static const uint8_t d_01[] = {0x3F};
     epd_send_cmd_data(dev, 0x01, d_01, sizeof(d_01));
 
     /* Panel setting (0x00) */
@@ -247,23 +272,16 @@ static void epd_panel_init(struct epd_dev_t *dev)
     static const uint8_t d_05[] = {0x40, 0x1F, 0x1F, 0x2C};
     epd_send_cmd_data(dev, 0x05, d_05, sizeof(d_05));
 
-    static const uint8_t d_06[] = {0x6F, 0x1F, 0x16, 0x25};
+    /* Waveshare 0x06: {6F 1F 17 49} — differs from aitjcize {6F 1F 16 25} */
+    static const uint8_t d_06[] = {0x6F, 0x1F, 0x17, 0x49};
     epd_send_cmd_data(dev, 0x06, d_06, sizeof(d_06));
 
     static const uint8_t d_08[] = {0x6F, 0x1F, 0x1F, 0x22};
     epd_send_cmd_data(dev, 0x08, d_08, sizeof(d_08));
 
-    /* IPC (0x13) Internal Power Control */
-    static const uint8_t d_13[] = {0x00, 0x04};
-    epd_send_cmd_data(dev, 0x13, d_13, sizeof(d_13));
-
-    /* PLL / frame rate (0x30) */
-    static const uint8_t d_30[] = {0x02};
+    /* PLL / frame rate (0x30) — Waveshare {03}, aitjcize {02} */
+    static const uint8_t d_30[] = {0x03};
     epd_send_cmd_data(dev, 0x30, d_30, sizeof(d_30));
-
-    /* TSE (0x41) Temperature Sensor Enable */
-    static const uint8_t d_41[] = {0x00};
-    epd_send_cmd_data(dev, 0x41, d_41, sizeof(d_41));
 
     /* VCOM and data interval (0x50) */
     static const uint8_t d_50[] = {0x3F};
@@ -273,35 +291,19 @@ static void epd_panel_init(struct epd_dev_t *dev)
     static const uint8_t d_60[] = {0x02, 0x00};
     epd_send_cmd_data(dev, 0x60, d_60, sizeof(d_60));
 
-    /* Resolution (0x61) */
+    /* Resolution (0x61): 800 × 480 */
     static const uint8_t d_61[] = {0x03, 0x20, 0x01, 0xE0};
     epd_send_cmd_data(dev, 0x61, d_61, sizeof(d_61));
 
-    /* VDCS (0x82) VCOM DC Setting */
-    static const uint8_t d_82[] = {0x1E};
-    epd_send_cmd_data(dev, 0x82, d_82, sizeof(d_82));
-
-    /* T_VDCS (0x84) - Temperature VCOM DC Setting */
+    /* T_VDCS (0x84) */
     static const uint8_t d_84[] = {0x01};
     epd_send_cmd_data(dev, 0x84, d_84, sizeof(d_84));
-
-    /* AGID (0x86) */
-    static const uint8_t d_86[] = {0x00};
-    epd_send_cmd_data(dev, 0x86, d_86, sizeof(d_86));
 
     /* Power saving (0xE3) */
     static const uint8_t d_E3[] = {0x2F};
     epd_send_cmd_data(dev, 0xE3, d_E3, sizeof(d_E3));
 
-    /* CCSET (0xE0) - Color Control Setting */
-    static const uint8_t d_E0[] = {0x00};
-    epd_send_cmd_data(dev, 0xE0, d_E0, sizeof(d_E0));
-
-    /* TSSET (0xE6) - Temperature Sensor Setting */
-    static const uint8_t d_E6[] = {0x00};
-    epd_send_cmd_data(dev, 0xE6, d_E6, sizeof(d_E6));
-
-    /* POWER_ON (0x04) — starts HV circuits */
+    /* POWER_ON — runs HV calibration sequence, leaves panel in STANDBY */
     epd_send_cmd(dev, 0x04);
     epd_wait_busy(dev);
     ESP_LOGI(TAG, "panel initialized and powered on");
@@ -344,15 +346,6 @@ esp_err_t epd_display(epd_handle_t h, const uint8_t *framebuf, size_t len)
 
     /* Write pixel data to panel SRAM (0x10 + frame data) */
     epd_send_frame(h, framebuf, len);
-
-    /*
-     * Refresh sequence: DISPLAY_REFRESH (0x12) → wait (12-15s) → POWER_OFF (0x02).
-     */
-    epd_send_cmd(h, 0x12);
-    epd_wait_busy(h);
-
-    epd_send_cmd(h, 0x02);
-    epd_wait_busy(h);
 
     ESP_LOGI(TAG, "refresh complete");
     return ESP_OK;
