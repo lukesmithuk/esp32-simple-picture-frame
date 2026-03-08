@@ -1,0 +1,10 @@
+menu "Picture Frame"
+
+    config TEST_MODE
+        bool "Enable hardware test mode"
+        default n
+        help
+            When enabled, app_main() runs the hardware integration test suite
+            instead of the normal display update cycle.
+
+endmenu
