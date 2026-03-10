@@ -1,16 +1,14 @@
 #pragma once
 
 #include <stdbool.h>
-#include "driver/i2c_master.h"
+#include "esp_err.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#define AXP2101_SLAVE_ADDRESS 0x34
-
-void axp2101_init(i2c_master_bus_handle_t i2c_bus);
-void axp2101_cmd_init(void);
+void axp2101_init(void);
+esp_err_t axp2101_cmd_init(void);
 void axp2101_epd_power(bool enable);
 void axp2101_basic_sleep_start(void);
 

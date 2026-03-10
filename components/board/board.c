@@ -2,11 +2,12 @@
 
 #include "axp2101.h"
 #include "driver/gpio.h"
-#include "driver/i2c_master.h"
 #include "esp_err.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "pcf85063.h"
+#include "esp_rom_sys.h"
 
 static const char *TAG = "board";
 
@@ -14,46 +15,165 @@ static const char *TAG = "board";
 #define BOARD_I2C_SDA GPIO_NUM_47
 #define BOARD_I2C_SCL GPIO_NUM_48
 
-static i2c_master_bus_handle_t s_i2c_bus = NULL;
-
-/* ── I2C bus recovery ─────────────────────────────────────────────────── */
+/* ── I2C bus init ────────────────────────────────────────────────────── */
 
 /**
- * Toggle SCL 9 times then send a STOP condition to unstick any device that
- * was mid-transaction when the previous boot ended (e.g. interrupted by
- * deep sleep or a crash).  Must be called before i2c_new_master_bus().
+ * Configure GPIOs for bit-banged I2C, then toggle SCL 9 times + STOP to
+ * unstick any slave that was mid-transaction when the previous boot ended
+ * (e.g. interrupted by deep sleep or a crash).
  */
-static void i2c_bus_recover(void)
+static void i2c_bus_init(void)
 {
-    /* Briefly drive both lines as open-drain outputs */
-    gpio_config_t cfg = {
-        .mode         = GPIO_MODE_OUTPUT_OD,
+    gpio_reset_pin(BOARD_I2C_SDA);
+    gpio_reset_pin(BOARD_I2C_SCL);
+
+    /* SDA: open-drain — our '1' just releases the line.
+     * SCL: push-pull  — force SCL high even against clock-stretching. */
+    gpio_config_t sda_cfg = {
+        .mode         = GPIO_MODE_INPUT_OUTPUT_OD,
         .pull_up_en   = GPIO_PULLUP_ENABLE,
-        .pin_bit_mask = (1ULL << BOARD_I2C_SDA) | (1ULL << BOARD_I2C_SCL),
+        .pin_bit_mask = (1ULL << BOARD_I2C_SDA),
     };
-    gpio_config(&cfg);
+    gpio_config_t scl_cfg = {
+        .mode         = GPIO_MODE_INPUT_OUTPUT,
+        .pull_up_en   = GPIO_PULLUP_ENABLE,
+        .pin_bit_mask = (1ULL << BOARD_I2C_SCL),
+    };
+    gpio_config(&sda_cfg);
+    gpio_config(&scl_cfg);
 
     gpio_set_level(BOARD_I2C_SDA, 1);
     gpio_set_level(BOARD_I2C_SCL, 1);
-    vTaskDelay(pdMS_TO_TICKS(1));
+    esp_rom_delay_us(50);
 
-    /* Toggle SCL 9 times while SDA is high */
+    /* Toggle SCL 9 times to free any slave holding SDA (NXP AN10216). */
     for (int i = 0; i < 9; i++) {
         gpio_set_level(BOARD_I2C_SCL, 0);
-        vTaskDelay(pdMS_TO_TICKS(1));
+        esp_rom_delay_us(10);
         gpio_set_level(BOARD_I2C_SCL, 1);
-        vTaskDelay(pdMS_TO_TICKS(1));
+        esp_rom_delay_us(10);
     }
 
-    /* Send STOP: SDA low → SCL high → SDA high */
+    /* STOP condition: SDA low → SCL high → SDA high */
     gpio_set_level(BOARD_I2C_SDA, 0);
-    vTaskDelay(pdMS_TO_TICKS(1));
+    esp_rom_delay_us(10);
     gpio_set_level(BOARD_I2C_SCL, 1);
-    vTaskDelay(pdMS_TO_TICKS(1));
+    esp_rom_delay_us(10);
     gpio_set_level(BOARD_I2C_SDA, 1);
-    vTaskDelay(pdMS_TO_TICKS(1));
+    esp_rom_delay_us(10);
 
-    ESP_LOGI(TAG, "I2C bus recovery complete");
+    ESP_LOGI(TAG, "I2C bus init complete (SCL=%d SDA=%d)",
+             gpio_get_level(BOARD_I2C_SCL), gpio_get_level(BOARD_I2C_SDA));
+}
+
+/* ── Bit-banged I2C ──────────────────────────────────────────────────── */
+
+/*
+ * Minimal bit-banged I2C master for PMIC init.
+ *
+ * The IDF v5.5.3 I2C driver on ESP32-S3 fires corrupt SCL clear-bus pulses
+ * on any hardware timeout, permanently wedging the PMIC after RTS reset.
+ * Bit-banging bypasses the IDF entirely for the init burst, then we switch
+ * to the IDF driver for ongoing (infrequent) operations.
+ *
+ * Requires GPIOs already configured as:
+ *   SDA = INPUT_OUTPUT_OD + pullup   (set by i2c_bus_recover)
+ *   SCL = INPUT_OUTPUT   + pullup
+ */
+
+#define BB_HALF_PERIOD_US  5   /* ~100 kHz */
+
+static void bb_start(void)
+{
+    gpio_set_level(BOARD_I2C_SDA, 1);
+    esp_rom_delay_us(BB_HALF_PERIOD_US);
+    gpio_set_level(BOARD_I2C_SCL, 1);
+    esp_rom_delay_us(BB_HALF_PERIOD_US);
+    gpio_set_level(BOARD_I2C_SDA, 0);   /* SDA ↓ while SCL high = START */
+    esp_rom_delay_us(BB_HALF_PERIOD_US);
+    gpio_set_level(BOARD_I2C_SCL, 0);
+    esp_rom_delay_us(BB_HALF_PERIOD_US);
+}
+
+static void bb_stop(void)
+{
+    gpio_set_level(BOARD_I2C_SDA, 0);
+    esp_rom_delay_us(BB_HALF_PERIOD_US);
+    gpio_set_level(BOARD_I2C_SCL, 1);
+    esp_rom_delay_us(BB_HALF_PERIOD_US);
+    gpio_set_level(BOARD_I2C_SDA, 1);   /* SDA ↑ while SCL high = STOP */
+    esp_rom_delay_us(BB_HALF_PERIOD_US);
+}
+
+static bool bb_write_byte(uint8_t byte)
+{
+    for (int i = 7; i >= 0; i--) {
+        gpio_set_level(BOARD_I2C_SDA, (byte >> i) & 1);
+        esp_rom_delay_us(BB_HALF_PERIOD_US);
+        gpio_set_level(BOARD_I2C_SCL, 1);
+        esp_rom_delay_us(BB_HALF_PERIOD_US);
+        gpio_set_level(BOARD_I2C_SCL, 0);
+        esp_rom_delay_us(BB_HALF_PERIOD_US);
+    }
+    /* Release SDA, clock in ACK */
+    gpio_set_level(BOARD_I2C_SDA, 1);
+    esp_rom_delay_us(BB_HALF_PERIOD_US);
+    gpio_set_level(BOARD_I2C_SCL, 1);
+    esp_rom_delay_us(BB_HALF_PERIOD_US);
+    bool ack = (gpio_get_level(BOARD_I2C_SDA) == 0);
+    gpio_set_level(BOARD_I2C_SCL, 0);
+    esp_rom_delay_us(BB_HALF_PERIOD_US);
+    return ack;
+}
+
+static uint8_t bb_read_byte(bool send_ack)
+{
+    uint8_t byte = 0;
+    gpio_set_level(BOARD_I2C_SDA, 1);   /* release for reading */
+    for (int i = 7; i >= 0; i--) {
+        esp_rom_delay_us(BB_HALF_PERIOD_US);
+        gpio_set_level(BOARD_I2C_SCL, 1);
+        esp_rom_delay_us(BB_HALF_PERIOD_US);
+        if (gpio_get_level(BOARD_I2C_SDA))
+            byte |= (1 << i);
+        gpio_set_level(BOARD_I2C_SCL, 0);
+    }
+    /* Send ACK (low) or NACK (high) */
+    gpio_set_level(BOARD_I2C_SDA, send_ack ? 0 : 1);
+    esp_rom_delay_us(BB_HALF_PERIOD_US);
+    gpio_set_level(BOARD_I2C_SCL, 1);
+    esp_rom_delay_us(BB_HALF_PERIOD_US);
+    gpio_set_level(BOARD_I2C_SCL, 0);
+    esp_rom_delay_us(BB_HALF_PERIOD_US);
+    gpio_set_level(BOARD_I2C_SDA, 1);   /* release */
+    return byte;
+}
+
+int board_bb_i2c_read(uint8_t dev_addr, uint8_t reg_addr,
+                      uint8_t *data, uint8_t len)
+{
+    bb_start();
+    if (!bb_write_byte(dev_addr << 1)) { bb_stop(); return -1; }
+    if (!bb_write_byte(reg_addr))       { bb_stop(); return -1; }
+    bb_start();  /* repeated start */
+    if (!bb_write_byte((dev_addr << 1) | 1)) { bb_stop(); return -1; }
+    for (int i = 0; i < len; i++)
+        data[i] = bb_read_byte(i < len - 1);   /* ACK all except last */
+    bb_stop();
+    return 0;
+}
+
+int board_bb_i2c_write(uint8_t dev_addr, uint8_t reg_addr,
+                       uint8_t *data, uint8_t len)
+{
+    bb_start();
+    if (!bb_write_byte(dev_addr << 1)) { bb_stop(); return -1; }
+    if (!bb_write_byte(reg_addr))       { bb_stop(); return -1; }
+    for (int i = 0; i < len; i++) {
+        if (!bb_write_byte(data[i]))    { bb_stop(); return -1; }
+    }
+    bb_stop();
+    return 0;
 }
 
 /* ── Public API ───────────────────────────────────────────────────────── */
@@ -62,26 +182,16 @@ esp_err_t board_init(void)
 {
     ESP_LOGI(TAG, "Board init start");
 
-    i2c_bus_recover();
+    i2c_bus_init();
 
-    i2c_master_bus_config_t bus_cfg = {
-        .i2c_port        = I2C_NUM_0,
-        .sda_io_num      = BOARD_I2C_SDA,
-        .scl_io_num      = BOARD_I2C_SCL,
-        .clk_source      = I2C_CLK_SRC_DEFAULT,
-        .glitch_ignore_cnt = 7,
-        .flags.enable_internal_pullup = true,
-    };
-    esp_err_t ret = i2c_new_master_bus(&bus_cfg, &s_i2c_bus);
+    axp2101_init();
+    esp_err_t ret = axp2101_cmd_init();
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "i2c_new_master_bus failed: %s", esp_err_to_name(ret));
+        ESP_LOGE(TAG, "PMIC init failed");
         return ret;
     }
 
-    axp2101_init(s_i2c_bus);
-    axp2101_cmd_init();
-
-    ret = pcf85063_init(s_i2c_bus);
+    ret = pcf85063_init();
     if (ret != ESP_OK) {
         /* RTC is non-fatal — log and continue */
         ESP_LOGW(TAG, "PCF85063 init failed (non-fatal): %s", esp_err_to_name(ret));

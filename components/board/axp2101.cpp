@@ -1,88 +1,29 @@
 #include "axp2101.h"
+#include "board.h"
 
 #include <stdio.h>
 #include <string.h>
 
 #include "XPowersLib/XPowersLib.h"
-#include "driver/gpio.h"
 #include "esp_err.h"
 #include "esp_log.h"
-#include "freertos/FreeRTOS.h"
 
 static const char *TAG = "axp2101";
 
 static XPowersPMU axp2101;
-static i2c_master_dev_handle_t axp_dev_handle = NULL;
-static i2c_master_bus_handle_t axp_i2c_bus = NULL;
-
-// I2C timing constants (matching aitjcize/Waveshare stock firmware)
-#define AXP_I2C_TIMEOUT     pdMS_TO_TICKS(1000)
-#define AXP_I2C_RETRY_COUNT 3
-#define AXP_I2C_RETRY_DELAY_MS 100
 
 static int AXP2101_SLAVE_Read(uint8_t devAddr, uint8_t regAddr, uint8_t *data, uint8_t len)
 {
-    if (!axp_dev_handle)
-        return -1;
-
-    for (int attempt = 0; attempt < AXP_I2C_RETRY_COUNT; attempt++) {
-        if (i2c_master_bus_wait_all_done(axp_i2c_bus, AXP_I2C_TIMEOUT) != ESP_OK)
-            continue;
-
-        esp_err_t ret =
-            i2c_master_transmit_receive(axp_dev_handle, &regAddr, 1, data, len, AXP_I2C_TIMEOUT);
-        if (ret == ESP_OK)
-            return 0;
-
-        ESP_LOGW(TAG, "I2C read reg 0x%02x failed (attempt %d/%d): %s", regAddr, attempt + 1,
-                 AXP_I2C_RETRY_COUNT, esp_err_to_name(ret));
-        vTaskDelay(pdMS_TO_TICKS(AXP_I2C_RETRY_DELAY_MS));
-    }
-    return -1;
+    return board_bb_i2c_read(devAddr, regAddr, data, len);
 }
 
 static int AXP2101_SLAVE_Write(uint8_t devAddr, uint8_t regAddr, uint8_t *data, uint8_t len)
 {
-    if (!axp_dev_handle)
-        return -1;
-
-    uint8_t *write_buf = (uint8_t *) malloc(len + 1);
-    if (!write_buf)
-        return -1;
-
-    write_buf[0] = regAddr;
-    memcpy(write_buf + 1, data, len);
-
-    for (int attempt = 0; attempt < AXP_I2C_RETRY_COUNT; attempt++) {
-        if (i2c_master_bus_wait_all_done(axp_i2c_bus, AXP_I2C_TIMEOUT) != ESP_OK)
-            continue;
-
-        esp_err_t ret = i2c_master_transmit(axp_dev_handle, write_buf, len + 1, AXP_I2C_TIMEOUT);
-        if (ret == ESP_OK) {
-            free(write_buf);
-            return 0;
-        }
-
-        ESP_LOGW(TAG, "I2C write reg 0x%02x failed (attempt %d/%d): %s", regAddr, attempt + 1,
-                 AXP_I2C_RETRY_COUNT, esp_err_to_name(ret));
-        vTaskDelay(pdMS_TO_TICKS(AXP_I2C_RETRY_DELAY_MS));
-    }
-    free(write_buf);
-    return -1;
+    return board_bb_i2c_write(devAddr, regAddr, data, len);
 }
 
-void axp2101_init(i2c_master_bus_handle_t i2c_bus)
+void axp2101_init(void)
 {
-    axp_i2c_bus = i2c_bus;
-
-    i2c_device_config_t dev_cfg = {
-        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
-        .device_address  = AXP2101_SLAVE_ADDRESS,
-        .scl_speed_hz    = 300000,
-    };
-
-    ESP_ERROR_CHECK(i2c_master_bus_add_device(i2c_bus, &dev_cfg, &axp_dev_handle));
-
     if (axp2101.begin(AXP2101_SLAVE_ADDRESS, AXP2101_SLAVE_Read, AXP2101_SLAVE_Write)) {
         ESP_LOGI(TAG, "Init PMU SUCCESS!");
     } else {
@@ -90,7 +31,7 @@ void axp2101_init(i2c_master_bus_handle_t i2c_bus)
     }
 }
 
-void axp2101_cmd_init(void)
+esp_err_t axp2101_cmd_init(void)
 {
     axp2101.disableTSPinMeasure();
 
@@ -153,6 +94,8 @@ void axp2101_cmd_init(void)
         axp2101.setSysPowerDownVoltage(2900);
         ESP_LOGW(TAG, "VOFF = 2.9V (battery UVLO)");
     }
+
+    return ESP_OK;
 }
 
 void axp2101_epd_power(bool enable)

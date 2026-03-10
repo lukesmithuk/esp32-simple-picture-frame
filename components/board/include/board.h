@@ -8,6 +8,12 @@
 extern "C" {
 #endif
 
+/* Bit-banged I2C — used for PMIC init to bypass IDF driver issues */
+int board_bb_i2c_read(uint8_t dev_addr, uint8_t reg_addr,
+                      uint8_t *data, uint8_t len);
+int board_bb_i2c_write(uint8_t dev_addr, uint8_t reg_addr,
+                       uint8_t *data, uint8_t len);
+
 /**
  * @brief Initialise all on-board hardware.
  *
