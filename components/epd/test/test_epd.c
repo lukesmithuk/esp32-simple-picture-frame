@@ -13,16 +13,20 @@
 
 TEST_CASE("epd_fill_color packs nibbles correctly", "[epd]")
 {
-    uint8_t buf[EPD_BUF_SIZE];
+    uint8_t *buf = epd_alloc_frame_buf();
+    TEST_ASSERT_NOT_NULL(buf);
     epd_fill_color(buf, EPD_COLOR_RED);
     /* EPD_COLOR_RED = 4; packed byte = 0x44 */
     TEST_ASSERT_EACH_EQUAL_UINT8(0x44, buf, EPD_BUF_SIZE);
+    free(buf);
 }
 
 TEST_CASE("epd_fill_color white", "[epd]")
 {
-    uint8_t buf[EPD_BUF_SIZE];
+    uint8_t *buf = epd_alloc_frame_buf();
+    TEST_ASSERT_NOT_NULL(buf);
     epd_fill_color(buf, EPD_COLOR_WHITE);
     /* EPD_COLOR_WHITE = 1; packed byte = 0x11 */
     TEST_ASSERT_EACH_EQUAL_UINT8(0x11, buf, EPD_BUF_SIZE);
+    free(buf);
 }
