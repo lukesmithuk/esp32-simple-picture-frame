@@ -184,10 +184,14 @@ esp_err_t board_init(void)
 
     i2c_bus_init();
 
-    axp2101_init();
-    esp_err_t ret = axp2101_cmd_init();
+    esp_err_t ret = axp2101_init();
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "PMIC init failed");
+        ESP_LOGE(TAG, "PMIC not found");
+        return ret;
+    }
+    ret = axp2101_cmd_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "PMIC config failed");
         return ret;
     }
 

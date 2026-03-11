@@ -22,13 +22,14 @@ static int AXP2101_SLAVE_Write(uint8_t devAddr, uint8_t regAddr, uint8_t *data, 
     return board_bb_i2c_write(devAddr, regAddr, data, len);
 }
 
-void axp2101_init(void)
+esp_err_t axp2101_init(void)
 {
     if (axp2101.begin(AXP2101_SLAVE_ADDRESS, AXP2101_SLAVE_Read, AXP2101_SLAVE_Write)) {
         ESP_LOGI(TAG, "Init PMU SUCCESS!");
-    } else {
-        ESP_LOGE(TAG, "Init PMU FAILED!");
+        return ESP_OK;
     }
+    ESP_LOGE(TAG, "Init PMU FAILED!");
+    return ESP_FAIL;
 }
 
 esp_err_t axp2101_cmd_init(void)

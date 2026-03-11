@@ -7,7 +7,7 @@
 extern "C" {
 #endif
 
-void axp2101_init(void);
+esp_err_t axp2101_init(void);
 esp_err_t axp2101_cmd_init(void);
 void axp2101_epd_power(bool enable);
 void axp2101_basic_sleep_start(void);
