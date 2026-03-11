@@ -58,6 +58,25 @@ esp_err_t board_rtc_get_time(time_t *t);
 /** @brief Write current time to the RTC. */
 esp_err_t board_rtc_set_time(time_t t);
 
+/**
+ * @brief Set RTC alarm for a specific hour:minute.
+ *
+ * Triggers INT on GPIO6 (active LOW) when the time matches.
+ * Day/weekday/seconds fields are disabled — alarm fires daily.
+ */
+esp_err_t board_rtc_set_alarm(int hour, int minute);
+
+/** @brief Clear the RTC alarm flag (must be called after each wakeup). */
+esp_err_t board_rtc_clear_alarm_flag(void);
+
+/**
+ * @brief Configure deep sleep with RTC alarm wakeup and enter sleep.
+ *
+ * Sets EXT0 wakeup on GPIO6 (RTC INT, active LOW) then calls
+ * esp_deep_sleep_start(). Does not return — chip resets on wake.
+ */
+void board_enter_deep_sleep(void);
+
 #ifdef __cplusplus
 }
 #endif

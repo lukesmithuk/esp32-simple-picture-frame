@@ -24,10 +24,20 @@ static const char *TAG = "pcf85063_rtc";
 #define PCF85063_ADDR_MONTHS 0x09
 #define PCF85063_ADDR_YEARS 0x0A
 
+// Alarm registers
+#define PCF85063_ADDR_SECOND_ALARM  0x0B
+#define PCF85063_ADDR_MINUTE_ALARM  0x0C
+#define PCF85063_ADDR_HOUR_ALARM    0x0D
+#define PCF85063_ADDR_DAY_ALARM     0x0E
+#define PCF85063_ADDR_WEEKDAY_ALARM 0x0F
+
 // Bit masks
-#define PCF85063_STOP_BIT 0x20     // STOP bit in Control_1 register
+#define PCF85063_STOP_BIT    0x20  // STOP bit in Control_1 register
 #define PCF85063_CAP_SEL_BIT 0x01  // Capacitor selection bit
-#define PCF85063_OSF_BIT 0x80      // Oscillator stop flag (in seconds register)
+#define PCF85063_OSF_BIT     0x80  // Oscillator stop flag (in seconds register)
+#define PCF85063_AEN_BIT     0x80  // Alarm enable (bit 7 of alarm regs, 1=disabled)
+#define PCF85063_AF_BIT      0x40  // Alarm flag in Control_2
+#define PCF85063_AIE_BIT     0x80  // Alarm interrupt enable in Control_2
 
 static bool rtc_initialized = false;
 static bool rtc_available = false;
@@ -141,4 +151,56 @@ esp_err_t pcf85063_write_time(time_t time_in)
 bool pcf85063_is_available(void)
 {
     return rtc_available;
+}
+
+esp_err_t pcf85063_set_alarm(int hour, int minute)
+{
+    if (!rtc_initialized)
+        return ESP_ERR_INVALID_STATE;
+    if (!rtc_available)
+        return ESP_ERR_NOT_FOUND;
+
+    /* 1. Clear AIE and AF in Control_2 before writing alarm regs */
+    uint8_t ctrl2;
+    if (board_bb_i2c_read(PCF85063_ADDR, PCF85063_ADDR_CONTROL_2, &ctrl2, 1) != 0)
+        return ESP_FAIL;
+    ctrl2 &= ~(PCF85063_AIE_BIT | PCF85063_AF_BIT);
+    if (board_bb_i2c_write(PCF85063_ADDR, PCF85063_ADDR_CONTROL_2, &ctrl2, 1) != 0)
+        return ESP_FAIL;
+
+    /* 2. Write alarm registers — enable hour and minute, disable the rest */
+    uint8_t alarm[5] = {
+        PCF85063_AEN_BIT,                /* seconds: disabled */
+        dec_to_bcd(minute),              /* minutes: enabled (AEN=0) */
+        dec_to_bcd(hour),                /* hours:   enabled (AEN=0) */
+        PCF85063_AEN_BIT,                /* day:     disabled */
+        PCF85063_AEN_BIT,                /* weekday: disabled */
+    };
+    if (board_bb_i2c_write(PCF85063_ADDR, PCF85063_ADDR_SECOND_ALARM, alarm, 5) != 0)
+        return ESP_FAIL;
+
+    /* 3. Enable alarm interrupt (AIE) */
+    ctrl2 |= PCF85063_AIE_BIT;
+    if (board_bb_i2c_write(PCF85063_ADDR, PCF85063_ADDR_CONTROL_2, &ctrl2, 1) != 0)
+        return ESP_FAIL;
+
+    ESP_LOGI(TAG, "Alarm set for %02d:%02d (INT on GPIO6)", hour, minute);
+    return ESP_OK;
+}
+
+esp_err_t pcf85063_clear_alarm_flag(void)
+{
+    if (!rtc_initialized)
+        return ESP_ERR_INVALID_STATE;
+    if (!rtc_available)
+        return ESP_ERR_NOT_FOUND;
+
+    uint8_t ctrl2;
+    if (board_bb_i2c_read(PCF85063_ADDR, PCF85063_ADDR_CONTROL_2, &ctrl2, 1) != 0)
+        return ESP_FAIL;
+    ctrl2 &= ~PCF85063_AF_BIT;
+    if (board_bb_i2c_write(PCF85063_ADDR, PCF85063_ADDR_CONTROL_2, &ctrl2, 1) != 0)
+        return ESP_FAIL;
+
+    return ESP_OK;
 }

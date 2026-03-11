@@ -4,16 +4,18 @@
 #include "driver/gpio.h"
 #include "esp_err.h"
 #include "esp_log.h"
+#include "esp_rom_sys.h"
+#include "esp_sleep.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "pcf85063.h"
-#include "esp_rom_sys.h"
 
 static const char *TAG = "board";
 
 /* ── Pin assignments ──────────────────────────────────────────────────── */
-#define BOARD_I2C_SDA GPIO_NUM_47
-#define BOARD_I2C_SCL GPIO_NUM_48
+#define BOARD_I2C_SDA    GPIO_NUM_47
+#define BOARD_I2C_SCL    GPIO_NUM_48
+#define BOARD_RTC_INT    GPIO_NUM_6
 
 /* ── I2C bus init ────────────────────────────────────────────────────── */
 
@@ -240,4 +242,26 @@ esp_err_t board_rtc_get_time(time_t *t)
 esp_err_t board_rtc_set_time(time_t t)
 {
     return pcf85063_write_time(t);
+}
+
+esp_err_t board_rtc_set_alarm(int hour, int minute)
+{
+    return pcf85063_set_alarm(hour, minute);
+}
+
+esp_err_t board_rtc_clear_alarm_flag(void)
+{
+    return pcf85063_clear_alarm_flag();
+}
+
+void board_enter_deep_sleep(void)
+{
+    ESP_LOGI(TAG, "Configuring EXT0 wakeup on GPIO%d (active LOW)", BOARD_RTC_INT);
+    esp_err_t ret = esp_sleep_enable_ext0_wakeup(BOARD_RTC_INT, 0);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to enable EXT0 wakeup: %s", esp_err_to_name(ret));
+    }
+
+    ESP_LOGI(TAG, "Entering deep sleep");
+    esp_deep_sleep_start();
 }
