@@ -1,3 +1,5 @@
+#include <time.h>
+
 #include "esp_log.h"
 #include "esp_sleep.h"
 #include "freertos/FreeRTOS.h"
@@ -11,8 +13,10 @@
 
 static const char *TAG = "main";
 
-/* Minutes between wakeups. TODO: make configurable / load from SD. */
-#define WAKE_INTERVAL_MINUTES 1
+/* Wake interval. TODO: make configurable / load from SD. */
+#define WAKE_INTERVAL_HOURS   1
+#define WAKE_INTERVAL_MINUTES 0
+#define WAKE_INTERVAL_SECONDS 0
 
 static void set_next_alarm(void)
 {
@@ -25,11 +29,16 @@ static void set_next_alarm(void)
         return;
     }
 
-    time_t next = now + (WAKE_INTERVAL_MINUTES * 60);
+    time_t next = now + WAKE_INTERVAL_HOURS * 3600
+                      + WAKE_INTERVAL_MINUTES * 60
+                      + WAKE_INTERVAL_SECONDS;
     struct tm t;
+    localtime_r(&now, &t);
+    ESP_LOGD(TAG, "NOW : %02d:%02d:%02d", t.tm_hour, t.tm_min, t.tm_sec);
     localtime_r(&next, &t);
+    ESP_LOGD(TAG, "NEXT: %02d:%02d:%02d", t.tm_hour, t.tm_min, t.tm_sec);
 
-    esp_err_t ret = board_rtc_set_alarm(t.tm_hour, t.tm_min);
+    esp_err_t ret = board_rtc_set_alarm(t.tm_hour, t.tm_min, t.tm_sec);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to set alarm: %s", esp_err_to_name(ret));
     }

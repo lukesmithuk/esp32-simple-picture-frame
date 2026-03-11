@@ -1,5 +1,9 @@
 #include "board.h"
 
+#include <stdio.h>
+#include <string.h>
+#include <time.h>
+
 #include "axp2101.h"
 #include "driver/gpio.h"
 #include "esp_err.h"
@@ -182,6 +186,46 @@ int board_bb_i2c_write(uint8_t dev_addr, uint8_t reg_addr,
 
 /* ── Public API ───────────────────────────────────────────────────────── */
 
+/**
+ * Set RTC to compile time if the oscillator-stop flag is set (clock was
+ * never set or lost power). Gives a rough starting point for alarms.
+ */
+static void rtc_set_compile_time_if_needed(void)
+{
+    time_t t;
+    if (pcf85063_read_time(&t) != ESP_ERR_INVALID_STATE)
+        return;  /* OSF not set — clock is running */
+
+    /* Parse __DATE__ "Mar 11 2026" and __TIME__ "20:41:28" */
+    static const char *months[] = {
+        "Jan","Feb","Mar","Apr","May","Jun",
+        "Jul","Aug","Sep","Oct","Nov","Dec"
+    };
+    char mon_str[4];
+    int day, year, hour, min, sec;
+    sscanf(__DATE__, "%3s %d %d", mon_str, &day, &year);
+    sscanf(__TIME__, "%d:%d:%d", &hour, &min, &sec);
+
+    int mon = 0;
+    for (int i = 0; i < 12; i++) {
+        if (strcmp(mon_str, months[i]) == 0) { mon = i; break; }
+    }
+
+    struct tm tm = {
+        .tm_sec  = sec,
+        .tm_min  = min,
+        .tm_hour = hour,
+        .tm_mday = day,
+        .tm_mon  = mon,
+        .tm_year = year - 1900,
+    };
+    time_t compile_time = mktime(&tm);
+
+    if (pcf85063_write_time(compile_time) == ESP_OK) {
+        ESP_LOGW(TAG, "RTC was unset — initialized to compile time");
+    }
+}
+
 esp_err_t board_init(void)
 {
     ESP_LOGI(TAG, "Board init start");
@@ -201,8 +245,9 @@ esp_err_t board_init(void)
 
     ret = pcf85063_init();
     if (ret != ESP_OK) {
-        /* RTC is non-fatal — log and continue */
         ESP_LOGW(TAG, "PCF85063 init failed (non-fatal): %s", esp_err_to_name(ret));
+    } else {
+        rtc_set_compile_time_if_needed();
     }
 
     ESP_LOGI(TAG, "Board init complete");
@@ -244,9 +289,9 @@ esp_err_t board_rtc_set_time(time_t t)
     return pcf85063_write_time(t);
 }
 
-esp_err_t board_rtc_set_alarm(int hour, int minute)
+esp_err_t board_rtc_set_alarm(int hour, int minute, int second)
 {
-    return pcf85063_set_alarm(hour, minute);
+    return pcf85063_set_alarm(hour, minute, second);
 }
 
 esp_err_t board_rtc_clear_alarm_flag(void)

@@ -59,12 +59,12 @@ esp_err_t board_rtc_get_time(time_t *t);
 esp_err_t board_rtc_set_time(time_t t);
 
 /**
- * @brief Set RTC alarm for a specific hour:minute.
+ * @brief Set RTC alarm for a specific hour:minute:second.
  *
  * Triggers INT on GPIO6 (active LOW) when the time matches.
- * Day/weekday/seconds fields are disabled — alarm fires daily.
+ * Day/weekday fields are disabled — alarm fires daily.
  */
-esp_err_t board_rtc_set_alarm(int hour, int minute);
+esp_err_t board_rtc_set_alarm(int hour, int minute, int second);
 
 /** @brief Clear the RTC alarm flag (must be called after each wakeup). */
 esp_err_t board_rtc_clear_alarm_flag(void);

@@ -153,7 +153,7 @@ bool pcf85063_is_available(void)
     return rtc_available;
 }
 
-esp_err_t pcf85063_set_alarm(int hour, int minute)
+esp_err_t pcf85063_set_alarm(int hour, int minute, int second)
 {
     if (!rtc_initialized)
         return ESP_ERR_INVALID_STATE;
@@ -168,9 +168,9 @@ esp_err_t pcf85063_set_alarm(int hour, int minute)
     if (board_bb_i2c_write(PCF85063_ADDR, PCF85063_ADDR_CONTROL_2, &ctrl2, 1) != 0)
         return ESP_FAIL;
 
-    /* 2. Write alarm registers — enable hour and minute, disable the rest */
+    /* 2. Write alarm registers — enable h/m/s, disable day/weekday */
     uint8_t alarm[5] = {
-        PCF85063_AEN_BIT,                /* seconds: disabled */
+        dec_to_bcd(second),              /* seconds: enabled (AEN=0) */
         dec_to_bcd(minute),              /* minutes: enabled (AEN=0) */
         dec_to_bcd(hour),                /* hours:   enabled (AEN=0) */
         PCF85063_AEN_BIT,                /* day:     disabled */
@@ -184,7 +184,7 @@ esp_err_t pcf85063_set_alarm(int hour, int minute)
     if (board_bb_i2c_write(PCF85063_ADDR, PCF85063_ADDR_CONTROL_2, &ctrl2, 1) != 0)
         return ESP_FAIL;
 
-    ESP_LOGI(TAG, "Alarm set for %02d:%02d (INT on GPIO6)", hour, minute);
+    ESP_LOGI(TAG, "Alarm set for %02d:%02d:%02d (INT on GPIO6)", hour, minute, second);
     return ESP_OK;
 }
 
