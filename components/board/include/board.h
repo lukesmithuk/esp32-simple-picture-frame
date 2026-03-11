@@ -18,10 +18,9 @@ int board_bb_i2c_write(uint8_t dev_addr, uint8_t reg_addr,
  * @brief Initialise all on-board hardware.
  *
  * Execution order:
- *   1. I2C bus recovery (9× SCL toggle + STOP)
- *   2. I2C master bus (SDA=47, SCL=48)
- *   3. AXP2101 PMIC — verify chip ID, full cmd_init
- *   4. PCF85063 RTC  — verify presence, clear STOP bit
+ *   1. I2C GPIO init + bus recovery (9× SCL toggle + STOP)
+ *   2. AXP2101 PMIC — verify chip ID, full cmd_init
+ *   3. PCF85063 RTC  — verify presence, clear STOP bit
  *
  * Must be called before any other board_* function.
  */

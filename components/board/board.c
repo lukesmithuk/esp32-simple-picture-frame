@@ -77,15 +77,14 @@ static void i2c_bus_init(void)
 /* ── Bit-banged I2C ──────────────────────────────────────────────────── */
 
 /*
- * Minimal bit-banged I2C master for PMIC init.
+ * Bit-banged I2C master (~100 kHz) used for ALL I2C on this board.
  *
  * The IDF v5.5.3 I2C driver on ESP32-S3 fires corrupt SCL clear-bus pulses
  * on any hardware timeout, permanently wedging the PMIC after RTS reset.
- * Bit-banging bypasses the IDF entirely for the init burst, then we switch
- * to the IDF driver for ongoing (infrequent) operations.
+ * Bit-banging bypasses the IDF driver entirely.
  *
  * Requires GPIOs already configured as:
- *   SDA = INPUT_OUTPUT_OD + pullup   (set by i2c_bus_recover)
+ *   SDA = INPUT_OUTPUT_OD + pullup   (set by i2c_bus_init)
  *   SCL = INPUT_OUTPUT   + pullup
  */
 
