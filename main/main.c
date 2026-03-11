@@ -43,10 +43,9 @@ void app_main(void)
         ESP_LOGE(TAG, "epd_display failed: %s", esp_err_to_name(ret));
     }
 
-    free(frame_buf);
-    epd_deinit();
-
 sleep:
+    free(frame_buf);    /* free(NULL) is a no-op per C99 */
+    epd_deinit();
     board_epd_power(false);
 
     /* TODO Phase N: configure RTC alarm, then board_sleep() + esp_deep_sleep_start() */

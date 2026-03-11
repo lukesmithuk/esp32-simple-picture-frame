@@ -133,7 +133,7 @@ esp_err_t pcf85063_write_time(time_t time_in)
     }
 
     ESP_LOGI(TAG, "Wrote time to PCF85063ATL: %04d-%02d-%02d %02d:%02d:%02d",
-             timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
+             year, timeinfo.tm_mon + 1, timeinfo.tm_mday,
              timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
     return ESP_OK;
 }

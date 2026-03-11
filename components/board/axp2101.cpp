@@ -99,15 +99,17 @@ esp_err_t axp2101_cmd_init(void)
     return ESP_OK;
 }
 
-void axp2101_epd_power(bool enable)
+esp_err_t axp2101_epd_power(bool enable)
 {
+    bool ok;
     if (enable) {
-        axp2101.enableALDO3();
+        ok = axp2101.enableALDO3();
         ESP_LOGI(TAG, "EPD power ON (ALDO3)");
     } else {
-        axp2101.disableALDO3();
+        ok = axp2101.disableALDO3();
         ESP_LOGI(TAG, "EPD power OFF (ALDO3)");
     }
+    return ok ? ESP_OK : ESP_FAIL;
 }
 
 void axp2101_basic_sleep_start(void)

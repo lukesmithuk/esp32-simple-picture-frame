@@ -209,7 +209,10 @@ esp_err_t board_init(void)
 
 esp_err_t board_epd_power(bool on)
 {
-    axp2101_epd_power(on);
+    esp_err_t ret = axp2101_epd_power(on);
+    if (ret != ESP_OK) {
+        return ret;
+    }
     if (on) {
         /* Allow ALDO3 rail to stabilise before SPI transactions */
         vTaskDelay(pdMS_TO_TICKS(10));
