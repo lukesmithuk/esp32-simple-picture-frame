@@ -57,3 +57,7 @@ dkms.conf
 # ESP-IDF build output
 build/
 sdkconfig
+sdkconfig.old
+
+# IDE
+.vscode/

@@ -1,10 +1,12 @@
-idf_component_register(SRCS "main.c"
-                             "tests.c"
-                        INCLUDE_DIRS "."
-                        REQUIRES pmic
-                                 esp_driver_i2c
-                                 esp_driver_gpio
-                                 esp_driver_sdmmc
-                                 sdmmc
-                                 fatfs
-                                 esp_hw_support)
+set(srcs "main.c")
+if(CONFIG_TEST_MODE)
+    list(APPEND srcs "test_main.c")
+endif()
+
+idf_component_register(
+    SRCS ${srcs}
+    INCLUDE_DIRS "."
+    REQUIRES
+        board
+        epd
+)

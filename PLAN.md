@@ -1,77 +1,71 @@
-# Project Plan
+# Project Plan — ESP32-S3 Picture Frame
 
-Battery-powered e-ink picture frame on the Waveshare ESP32-S3-PhotoPainter. Wakes once per day,
-updates the displayed image from SD card (or WiFi), then returns to deep sleep. Target: months of
-battery life per charge.
+## Goal
 
-## Boot-cycle model (ADR-012)
+ESP32-S3 e-paper picture frame on the Waveshare ESP32-S3-PhotoPainter board.
 
-This firmware has **no main loop**.  Each display update is a complete cold-boot → work → sleep
-cycle.  `esp_deep_sleep_start()` never returns; the PCF85063 RTC alarm on GPIO6 (EXT0, active LOW)
-triggers a cold boot and `app_main()` runs again from the top.
+Wake from deep sleep on RTC alarm → load image from SD card → dither to
+6-colour e-paper palette → render to display → sleep until next alarm.
+
+---
+
+## Architecture
 
 ```
-boot → app_main() → init → update → pmic_sleep() → deep_sleep_start()
-          ↑                                                  |
-          └──────── PCF85063 alarm → GPIO6 → cold boot ─────┘
+app_main (main/)
+  ├── TEST_MODE path  → tests_run()           [main/test_main.c]
+  └── Production path
+        ├── board_init()                      [components/board/]
+        │     ├── I2C bus recovery
+        │     ├── i2c_new_master_bus()
+        │     ├── axp2101_init() + cmd_init() [board/axp2101.cpp — XPowersLib]
+        │     └── pcf85063_init()             [board/pcf85063.c  — ported from aitjcize]
+        ├── board_epd_power(true)             [→ AXP2101 ALDO3 enable]
+        ├── epd_init()                        [components/epd/]
+        ├── epd_display(frame_buf)            [hw_reset → init → data → refresh]
+        ├── epd_deinit()
+        ├── board_epd_power(false)
+        └── TODO: board_sleep() + esp_deep_sleep_start()
 ```
 
-Persistent state (image index, last-display time) lives in RTC fast memory or NVS.
+### Component summary
 
-## Phases
+| Component | Language | Role |
+|-----------|----------|------|
+| `components/board/` | C + C++ | I2C bus, PMIC (XPowersLib), RTC |
+| `components/board/XPowersLib/` | C++ (vendored) | AXP2101 PMIC register access |
+| `components/epd/` | C | SPI, EPD panel driver |
+| `main/` | C | App entry point, integration tests |
 
-### Phase 1: Hardware Bring-Up
-Verify all peripherals are reachable and behaving as expected before writing application logic.
+### Test infrastructure
 
-- [ ] I2C scan — confirm addresses for TG28 PMIC (expected 0x34), PCF85063 RTC (0x51), SHTC3 (0x70)
-- [ ] TG28 chip ID — read register 0x03; AXP2101 returns 0x47; document actual value
-- [ ] EPD power-on — assert GPIO 6 high, verify SPI comms with display controller
-- [ ] SD card mount — FAT32, read a test file
-- [ ] RTC read — confirm time registers are accessible
+- **Hardware integration tests** (`TEST_MODE` kconfig): `main/test_main.c`
+  Runs via normal flash. Tests board init, PMIC power toggle, RTC availability,
+  and EPD solid-colour display for each of the 6 palette colours.
+- **Unity component tests** (`idf.py -T`): `components/*/test/`
+  Pure logic only (no hardware). Currently: EPD pixel-packing tests.
 
-### Phase 2: EPD Driver
-Minimal driver to push a full-frame image to the 7.3" Spectra 6 panel.
+---
 
-- [ ] SPI initialisation (MOSI=11, CLK=10, CS=9, DC=8, RST=12, BUSY=13, PWR=6)
-- [ ] Panel init sequence (from Waveshare demo / aitjcize reference)
-- [ ] Full-frame write (800×480, 4bpp packed, ~192 KB framebuffer in PSRAM)
-- [ ] Busy-wait on BUSY pin (~30 s refresh)
-- [ ] Panel sleep command after refresh
+## Phase Roadmap
 
-### Phase 3: Image Pipeline
-Convert arbitrary images to the Spectra 6 6-colour palette for display.
+| Phase | Description | Status |
+|-------|-------------|--------|
+| 1 | Hardware bring-up & schematic analysis | ✅ Done (2026-02-21) |
+| 2 | PMIC driver (AXP2101) | ✅ Done (2026-02-22) |
+| 3 | EPD driver — previous attempt | ❌ Abandoned (BUSY-stuck bug) |
+| **4** | **Architecture definition + fresh implementation** | 🔄 In progress |
+| 5 | RTC alarm + deep sleep wake cycle | ⬜ Planned |
+| 6 | SD card mount + image selection | ⬜ Planned |
+| 7 | JPEG/PNG decode + bilinear scale | ⬜ Planned |
+| 8 | Floyd-Steinberg dither to 6-colour palette | ⬜ Planned |
+| 9 | Production loop (alarm → image → display → sleep) | ⬜ Planned |
+| 10 | Power optimisation (pmic_sleep, DLDO mapping) | ⬜ Planned |
 
-- [ ] Define measured palette (RGB values for Black/White/Green/Blue/Red/Yellow as rendered)
-- [ ] Floyd-Steinberg dithering over 800×480 framebuffer
-- [ ] JPEG decode from SD card (esp_jpeg or libjpeg-turbo component)
-- [ ] Resize/crop to 800×480
-- [ ] End-to-end: JPEG on SD → dithered framebuffer → EPD
+---
 
-### Phase 4: Wake / Sleep Cycle
-- [ ] Deep sleep entry with RTC alarm wakeup (PCF85063)
-- [ ] Persist image index across sleep (RTC RAM or NVS)
-- [ ] First-boot detection
-- [ ] Manual trigger via button (optional)
+## Reference Implementations
 
-### Phase 5: WiFi Image Fetch (optional / later)
-- [ ] WiFi STA connect
-- [ ] HTTP GET image from configurable URL
-- [ ] Fallback to SD card on failure
-
-### Phase 6: Power Optimisation
-- [ ] Measure current draw during each phase
-- [ ] Profile wake cycle wall-clock time
-- [ ] Tune sleep voltage / peripherals-off sequence via TG28
-- [ ] Estimate battery life (target: 3+ months on a 2000 mAh cell)
-
-## Milestones
-
-| # | Milestone | Status |
-|---|-----------|--------|
-| 1 | All peripherals confirmed reachable via I2C scan | **DONE** (2026-02-21) |
-| 2 | PMIC driver: EPD power + sleep sequence working | **DONE** (2026-02-22) |
-| 2a | Production boot verified on hardware (pmic_init + EPD power cycle) | **DONE** (2026-02-22) |
-| 3 | Static test image displayed on EPD | pending |
-| 4 | SD-card JPEG rendered on EPD end-to-end | pending |
-| 5 | Device wakes, updates, sleeps reliably 10× in a row | pending |
-| 6 | Battery life estimate validated against target | pending |
+- `aitjcize/esp32-photoframe` — primary reference; confirmed working on this hardware.
+  Sparse-cloned to `/tmp/esp32-photoframe-ref/` (not committed here).
+- `waveshareteam/ESP32-S3-PhotoPainter` — authoritative EPD init bytes (cross-checked).

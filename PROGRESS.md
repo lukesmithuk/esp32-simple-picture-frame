@@ -1,421 +1,138 @@
 # Progress Log
 
-Completed work, findings, and session notes. Newest entries at the top.
+## 2026-03-08 — Phase 4: Architecture + Fresh Implementation (current)
 
----
+### Context
 
-## 2026-02-22 — Phase 2 production boot verified; enter_deep_sleep() helper
+All previous code deleted on the `start-again` branch (commit `ec2eacd`).
+Phases 1–3 are abandoned — the knowledge gained is preserved in DECISIONS.md
+and MEMORY.md, but no code from those phases carries forward.
 
-### Production boot cycle verified on hardware
+The fresh implementation ports drivers directly from `aitjcize/esp32-photoframe`
+(confirmed working on this hardware) rather than rebuilding from scratch.
 
-Cold-boot from USB plug (no BOOT button held) runs the full production path cleanly:
-- `pmic_init()` — chip ID 0x4A, I2C OK
-- `do_display_update()` — ALDO3 on → off without crash
-- Halt loop reached and running, logging `halted [N]` every 5 seconds
+### Root cause of previous BUSY-stuck bug (Phase 3)
 
-Confirmed by monitoring serial output at I(10816) halted [1] — boot + full pre-sleep
-sequence completes in ~10.8 seconds from power-on.
+Comparing our previous driver against `aitjcize/driver_ed2208_gca.c`:
 
-### Flash / boot procedure (ADR-014 context)
-
-Discovered and documented four distinct boot paths with different I2C/serial behaviours:
-
-| Path | I2C state | Firmware runs? |
-|------|-----------|----------------|
-| Cold USB plug (no BOOT) | Clean | Yes |
-| BOOT + USB replug → flash → cold USB replug | Clean | Yes |
-| BOOT + USB replug → flash → esptool hard-reset | Bad (download mode) | No |
-| `monitor.py --reset` (RTS toggle) | Bad (download mode) | No |
-
-**Reliable flash + verify workflow**: `flash.py --no-monitor` → unplug + replug USB
-(no BOOT) → `monitor.py --timeout N`.
-
-### pmic_sleep() / LDO_EN_3 silences USB-JTAG (ADR-014)
-
-Discovered that calling `pmic_sleep()` before the debug halt loop causes all subsequent
-serial output to be lost.  Isolated to `pmic_sleep()` zeroing LDO_EN_3 (was 0x03 at
-boot = DLDO1 bit0 + DLDO2 bit1).  DLDO1/DLDO2 rail-to-pin mapping unknown — one or
-both likely powers a component in the USB-JTAG signal path.
-
-**Workaround**: debug build halts before `pmic_sleep()`.  In true production (deep sleep)
-this is irrelevant — serial is not needed after `esp_deep_sleep_start()`.
-
-### enter_deep_sleep() helper
-
-Refactored the sleep sequence from inline code in `app_main()` into a single helper:
-
-```c
-static void enter_deep_sleep(pmic_handle_t pmic, i2c_master_bus_handle_t bus)
+```
+aitjcize:      0x10 + data → wait_busy("data") → 0x04 PON → wait_busy("power_on") → ...
+previous ours: 0x10 + data → 0x04 PON → wait_busy("power_on") → ...  ← missing wait
 ```
 
-Owns: `pmic_sleep()` → `pmic_deinit()` → `i2c_del_master_bus()` →
-`esp_sleep_enable_ext0_wakeup(GPIO6, LOW)` → `esp_deep_sleep_start()`.
+Missing `wait_busy` after data transfer before PON is the suspected root cause.
+Also: aitjcize re-inits the panel (full hw_reset + init sequence) on every refresh
+call; our previous driver did not.
 
-Debug halt loop sits before the call with a clear ADR-014 reference.  When Phase 7
-resolves DLDO rail mapping, delete the halt loop — `enter_deep_sleep()` is already in place.
+### Architecture decisions
 
-### flash.py improvements
+See `DECISIONS.md` for full ADRs (ADR-001 through ADR-009).
 
-- Added `--timeout N` argument that passes through to `monitor.py`
-- Added `sys.stdout.flush()` + `sys.stderr.flush()` before `os.execv` so buffered
-  print lines are not lost on process replacement
+Summary:
+- Board HAL component owns I2C (PMIC + RTC); EPD is a separate SPI component
+- XPowersLib vendored for AXP2101 PMIC (same as aitjcize, confirmed working)
+- PCF85063 RTC driver ported verbatim from aitjcize
+- EPD driver adapted from aitjcize: hard-coded pins, same init bytes and sequence
+- Two-tier test infrastructure: Unity (pure logic) + TEST_MODE (hardware-in-loop)
 
-### esp_sleep_get_wakeup_cause deprecation fixed
+### Files created
 
-IDF v6 deprecates `esp_sleep_get_wakeup_cause()` in favour of
-`esp_sleep_get_wakeup_causes()` (plural, returns bitmask).  Updated in `app_main()`.
-
----
-
-## 2026-02-22 — Phase 2 complete: PMIC driver + application skeleton
-
-### Chip ID correction
-
-Earlier notes recorded "AXP2101 = 0x47, TG28 = 0x4A".  This was wrong.
-Confirmed from XPowersLib source (`REG/AXP2101Constants.h`):
-`XPOWERS_AXP2101_CHIP_ID = 0x4A`.  The real AXP2101 also returns 0x4A.
-The `pmic_init()` check therefore accepts only 0x4A (see ADR-013).
-
-### PMIC driver (`components/pmic/`)
-
-Pure-C driver implemented using the I2C pattern confirmed in Phase 1:
-- `pmic_init()` — adds device handle (0x34, 100 kHz), reads chip ID
-- `pmic_epd_power()` — sets ALDO3 voltage then enable bit (reg 0x12 bit2);
-  confirmed register addresses from Phase 1 hardware testing
-- `pmic_sleep()` — writes 0x00 to LDO_EN_1/2/3 (regs 0x11–0x13);
-  DCDC_EN (reg 0x10) left untouched pending bit-mapping investigation
-- `pmic_run_tests()` — register probe, write test, ALDO3 power cycle
-- `pmic_deinit()` — removes I2C device handle
-
-### Application skeleton
-
-`main.c` restructured into the production boot-cycle model (ADR-012):
-boot → init → update decision → EPD update (stubbed) → pmic_sleep() →
-esp_deep_sleep_start().  No main loop — deep sleep is the loop.
-
-### Test mode
-
-`CONFIG_TEST_MODE` Kconfig option added.  When enabled, `app_main()` calls
-`tests_run()` (in `tests.c`) instead of entering the production boot cycle.
-Keeps the device alive for serial monitor observation.  Add per-component
-test functions to `tests.c` as each phase completes.
-
-### TG28 register layout
-
-Confirmed that TG28 uses an older AXP register layout for DC/LDO control,
-not the AXP2101 layout (which moved DC enable to 0x80, LDO enable to 0x90).
-All registers used in pmic.c are confirmed working on hardware from Phase 1.
-
----
-
-## 2026-02-21 — Phase 1 complete: EPD power + SD card verified
-
-### I2C hang: development tooling artifact, not a firmware bug
-
-Observed hang: after `monitor.py` resets the chip via RTS, I2C reads hang after exactly
-N successful register reads (N = number of devices that ACKed during the bus scan, here 5).
-The same firmware works correctly when captured via `flash.py` (esptool hard reset →
-immediate `--no-reset` monitor).
-
-**Root cause**: esptool uses a precise DTR+RTS sequence designed for ESP32 USB-JTAG;
-`monitor.py`'s bare `rts=True → sleep(100ms) → rts=False` leaves the I2C bus in a
-state that causes slave devices to hang subsequent reads.  This is a development-tooling
-artifact — not a firmware bug and not relevant to production (deep sleep wakeup uses RTC
-hardware wakeup, not any USB-serial reset).
-
-**Workaround**: always capture output via `python3 flash.py` rather than running
-`monitor.py` standalone with its default chip reset.
-
-**Also simplified** (unrelated to the hang): removed per-call
-`i2c_master_bus_wait_all_done()` from `pmic_read` / `pmic_write`.  Confirmed redundant —
-`i2c_master_transmit_receive` is synchronous; the original `wait_all_done` calls were a
-cargo-cult workaround from when temp handles were being used per-read.
-
-Confirmed working pattern: persistent device handle + direct `transmit_receive` calls,
-no `wait_all_done` needed.
-
-### EPD power test result: **[INFO] ALDO3 already enabled**
-
-TG28 ALDO3 was already on (LDO_EN_2 reg 0x12 = 0x0C, bit 2 set) from a previous run.
-ALDO3_VOLT (reg 0x1C) = 0x1C = 28 → (500 + 28 × 100) mV = **3300 mV = 3.3 V** ✓
-EPD_BUSY (GPIO13) was HIGH before and after — EPD is powered and idle, not asserting BUSY.
-ALDO3 → EPD_VCC rail confirmed functional.
-
-### SD card test result: **[PASS]**
-
-| Field | Value |
-|-------|-------|
-| Type | SDHC |
-| Capacity | 14.9 GB (30,535,680 × 512-byte sectors) |
-| Interface | 4-bit SDIO at 400 kHz (probing speed) |
-| Mount point | /sdcard |
-| Root entries | 11 (dirs + hidden .current.* files) |
-
-Root directory listing:
 ```
-System Volume Information   DIR
-02_sys_ap_img               DIR
-03_sys_ap_html              DIR
-04_sys_ai_img               DIR
-05_user_ai_img              DIR
-06_user_Foundation_img      DIR
-01_sys_init_img             DIR
-images                      DIR
-.current.jpg                file
-.current.lnk                file
-.current.png                file
+CMakeLists.txt
+sdkconfig.defaults
+Kconfig.projbuild
+PLAN.md
+DECISIONS.md
+TODO.md
+PROGRESS.md  (this file)
+main/
+  CMakeLists.txt
+  main.c
+  test_main.h
+  test_main.c
+components/board/
+  CMakeLists.txt
+  include/board.h
+  axp2101.h
+  axp2101.cpp           ← ported from aitjcize (XPowersLib wrapper)
+  pcf85063.h
+  pcf85063.c            ← ported verbatim from aitjcize
+  board.c
+  XPowersLib/           ← vendored from aitjcize/pmic_driver_axp2101/src/
+    XPowersLib.h
+    XPowersLibInterface.cpp / .hpp
+    XPowersLib_Version.h
+    XPowersParams.hpp
+    XPowersCommon.tpp
+    XPowersAXP2101.tpp
+    XPowersAXP192.tpp
+    XPowersAXP202.tpp
+    PowersBQ25896.tpp
+    PowersSY6970.tpp
+    PowerDeliveryHUSB238.hpp
+    REG/
+      AXP2101Constants.h (+ others)
+components/epd/
+  CMakeLists.txt
+  include/epd.h
+  epd.c                 ← adapted from aitjcize driver_ed2208_gca.c
+components/board/test/
+  CMakeLists.txt
+  test_board.c          ← Unity placeholder
+components/epd/test/
+  CMakeLists.txt
+  test_epd.c            ← Unity: epd_fill_color packing tests
 ```
 
-The `images/` directory is where user images should be placed for the picture frame.
-The `.current.*` files appear to be Waveshare firmware state tracking files (safe to ignore).
+### Status — VERIFIED ON HARDWARE (2026-03-08)
 
-**Phase 1 bring-up is complete.** All hardware verified: I2C bus, TG28 PMIC, EPD power, SD card.
+**Build**: clean, zero errors, zero warnings.
 
----
+**First flash result**: display updated to solid white ✅
 
-## 2026-02-21 — Phase 1: Schematic pulled and analysed
-
-Downloaded schematic PDF (`hardware/ESP32-S3-PhotoPainter-Schematic.pdf`) from Waveshare wiki.
-Rendered and cropped all sections for reference (see `hardware/schematic-*.png`).
-
-### Key findings — corrects earlier assumptions
-
-**GPIO6 = RTC_INT, NOT EPD_PWR**
-PCF85063 INT pin routes directly to ESP32-S3 GPIO6. There is no EPD_PWR GPIO.
-EPD power comes from TG28 ALDO3 (I2C-controlled LDO). To power the EPD: enable ALDO3 via I2C.
-Earlier CLAUDE.md entry "EPD power pin (GPIO 6)" was incorrect — now fixed.
-
-**Wakeup path is direct: PCF85063 → GPIO6 → ESP32**
-The aitjcize firmware assumed: PCF85063 → AXP2101 IRQ → ESP32-S3. The schematic shows
-PCF85063 INT goes directly to GPIO6, with no TG28 in the path. Deep sleep wakeup source
-must be EXT0/EXT1 on GPIO6, not GPIO21 (which is AXP_IRQ, a separate signal).
-
-**SD card is 4-bit SDIO (not SPI)**
-All 6 SD signals are routed to ESP32 GPIOs. D1 and D2 are connected via fitted 0Ω resistors.
-
-### Complete GPIO map (from schematic)
-
-| Signal | GPIO | Notes |
-|--------|------|-------|
-| EPD_DC | 8 | |
-| EPD_CS | 9 | |
-| EPD_SCK | 10 | |
-| EPD_DIN | 11 | |
-| EPD_RST | 12 | |
-| EPD_BUSY | 13 | Active LOW |
-| RTC_INT | 6 | PCF85063 INT → GPIO6 direct |
-| AXP_IRQ | 21 | TG28 IRQ → GPIO21 |
-| SYS_OUT | 5 | TG28 SYS power output indicator |
-| CHGLED | 3 | Charging LED |
-| I2C SDA | 47 | Shared bus: TG28 + PCF85063 + SHTC3 + audio |
-| I2C SCL | 48 | |
-| SD_CS/D3 | 38 | 4-bit SDIO |
-| SD_CLK | 39 | 4-bit SDIO |
-| SD_D0 | 40 | 4-bit SDIO |
-| SD_CMD | 41 | 4-bit SDIO |
-| SD_D1 | 1 | 4-bit SDIO (0Ω R60) |
-| SD_D2 | 2 | 4-bit SDIO (0Ω R59) |
-
-### TG28 PMIC ALDO assignments (from schematic)
-
-| Rail | Output | Notes |
-|------|--------|-------|
-| ALDO2 | Audio_VCC | Audio subsystem power |
-| ALDO3 | EPD_VCC | EPD power — must enable before display use |
-| DC1 | 3.3V (VCC3V3) | Main system rail — must stay on |
-
-### Resolved open questions from TODO/PROGRESS
-
-- **PCF85063 INTB wiring**: Direct to GPIO6 (not through TG28) ✓
-- **SD card interface**: 4-bit SDIO on GPIO38/39/40/41/1/2 ✓
-- **EPD_PWR GPIO**: Does not exist — EPD powered by TG28 ALDO3 ✓
-
----
-
-## 2026-02-21 — Phase 1 bring-up: extended register probe + write test
-
-### I2C hang root cause identified and fixed
-
-> **[SUPERSEDED]** The analysis below was the working theory at the time.  Later testing
-> (same session) showed the hang was entirely a `monitor.py` RTS-reset tooling artifact —
-> not a firmware bug.  See the entry at the top of this file for the correct diagnosis.
-> `wait_all_done` per-call was subsequently removed; persistent handle alone is sufficient.
-
-The I2C bus was hanging on every read after `i2c_master_probe()` scanned the bus.
-Root cause: `i2c_master_probe()` leaves async state on the bus. Fix (from aitjcize
-and multiverse2011 reference projects):
-
-1. **Persistent device handle** — open once with `i2c_master_bus_add_device()`, reuse for all transactions
-2. **`i2c_master_bus_wait_all_done()`** — call before every `transmit` / `transmit_receive`
-
-Both conditions are required. `wait_all_done` alone with a temp handle still hung.
-Persistent handle alone still hung. Together: all 14 registers read cleanly with zero hangs.
-
-### TG28 register dump (AXP2101-named registers, USB powered, no battery)
-
-| Reg | AXP2101 name | Value | Notes |
-|-----|--------------|-------|-------|
-| 0x00 | PMU_STATUS_1 | 0x20 | bit 5 = VBUS present; bits 3:0 = 0 (no battery) |
-| 0x01 | PMU_STATUS_2 | 0x15 | bits 6:5 = charger state; bit 4 = VSYS OK; bit 2, 0 set |
-| 0x03 | CHIP_ID | 0x4A | (AXP2101 = 0x47; TG28 differs) |
-| 0x08 | SLEEP_CFG | 0x04 | |
-| 0x10 | DCDC_EN | 0x34 | bits: DC1=1 (3.3V), DC3=1, DC5=1 |
-| 0x11 | LDO_EN_1 | 0x00 | all LDOs in group 1 off |
-| 0x12 | LDO_EN_2 | 0x08 | ALDO4 (bit 3) enabled |
-| 0x13 | LDO_EN_3 | 0x03 | DLDO1 (bit 0) + DLDO2 (bit 1) enabled |
-| 0x15 | DCDC1_VOLT | 0x06 | AXP2101: DC1 = 1500 + 100×6 = 2100 mV? (nominal 3.3V — mapping differs) |
-| 0x16 | DCDC2_VOLT | 0x04 | |
-| 0x1A | ALDO1_VOLT | 0xA1 | bit 7 = 1 (flag?); lower 5 bits = 1 |
-| 0x1B | ALDO2_VOLT | 0x00 | |
-| 0x40 | IRQ_EN_1 | 0xFF | all IRQs enabled (default-on) |
-| 0x41 | IRQ_EN_2 | 0xFC | |
-
-### Register write test result: **[PASS]**
-
-IRQ_EN_1 (0x40): wrote 0x00 over default 0xFF → readback 0x00 ✓, restored 0xFF ✓.
-TG28 register map is writable and responds to AXP2101-addressed registers.
-
-### Conclusion: TG28 is AXP2101 register-compatible
-
-- Same I2C address (0x34) ✓
-- Same register map layout (at least 0x00–0x41 confirmed) ✓
-- Registers readable and writable ✓
-- Chip ID register 0x03 differs (0x4A vs 0x47) — XPowersLib `begin()` will fail unless
-  patched to accept 0x4A, or the register check is bypassed
-
-**Recommendation**: Port aitjcize AXP2101 driver logic to pure C; patch chip ID check
-to accept both 0x47 and 0x4A. Do NOT use XPowersLib directly — it C++ template
-dependency is not worth the complexity for the limited PMIC operations we need.
-
----
-
-## 2026-02-21 — Phase 1 bring-up: I2C scan results
-
-### I2C scan results (SDA=47, SCL=48, 100 kHz)
-
-| Address | Device | Status |
-|---------|--------|--------|
-| 0x18 | ES8311 audio DAC | Found (expected — on-board audio, not needed for this project) |
-| 0x34 | TG28 PMIC | Found ✓ |
-| 0x40 | ES7210 microphone ADC | Found (expected — on-board audio, not needed) |
-| 0x51 | PCF85063 RTC | Found ✓ |
-| 0x70 | SHTC3 temp/humidity | Found ✓ |
-
-Two `probe device timeout` warnings from IDF during scan — normal for devices that do clock stretching on address probe. All expected devices still detected.
-
-### TG28 chip ID: **0x4A**
-
-Register 0x03 returned `0x4A`.
-
-> **Correction (2026-02-22)**: Earlier notes stated "AXP2101 returns 0x47".  This was wrong.
-> XPowersLib source confirms `XPOWERS_AXP2101_CHIP_ID = 0x4A` — the real AXP2101 also returns
-> 0x4A.  The TG28 and AXP2101 share the same chip ID.  See ADR-013.
-
----
-
-## 2026-02-21 — Reference firmware deep-dive
-
-Deep read of aitjcize/esp32-photoframe and waveshareteam/ESP32-S3-PhotoPainter (latest Jan 2026).
-
-### EPD driver — exact init sequence confirmed (from Waveshare display_bsp.cpp)
-SPI at **40 MHz**, half-duplex. BUSY pin is **active LOW** — poll until HIGH.
-
-Init sequence (register → data bytes):
 ```
-0xAA → 49 55 20 08 09 18
-0x01 → 3F
-0x00 → 5F 69
-0x03 → 00 54 00 44
-0x05 → 40 1F 1F 2C
-0x06 → 6F 1F 17 49
-0x08 → 6F 1F 1F 22
-0x30 → 03
-0x50 → 3F
-0x60 → 02 00
-0x61 → 03 20 01 E0   (= 800 × 480)
-0x84 → 01
-0xE3 → 2F
-0x04 → (POWER_ON, then wait BUSY)
+I (781) axp2101: Init PMU SUCCESS!        ← PMIC init OK, chip ID 0x4A
+I (821) pcf85063_rtc: PCF85063ATL RTC initialized successfully  ← RTC OK
+I (841) axp2101: EPD power ON (ALDO3)
+I (841) epd: EPD init complete
+I (991) epd: Sending 192000 bytes in 128-byte chunks
+I (1111) epd: Buffer send complete
+[display updated to white]
 ```
 
-Display refresh sequence: `0x04` (POWER_ON) → wait BUSY → `0x06 6F 1F 17 49` → `0x12 00` (DISPLAY_REFRESH) → wait BUSY → `0x02 00` (POWER_OFF) → wait BUSY.
+**BUSY-stuck bug confirmed fixed.** Root cause was the missing `wait_busy("data")`
+between the data transfer and `0x04 PON`. The fix (porting aitjcize's sequence
+exactly) resolved it on the first attempt.
 
-Pixel format: **4bpp packed**, 2 pixels per byte. High nibble = x-even pixel, low nibble = x-odd pixel.
-Colour indices: 0=Black, 1=White, 2=Red, 3=Green, 4=Blue, 5=Yellow.
+Note: monitor timeout was 30s — the full refresh cycle (wait_busy × 4 + e-paper
+scan time) takes longer. Use `--timeout 120` to capture the complete log.
 
-Frame buffer: `width * height / 2` bytes = 800 × 480 / 2 = **192,000 bytes**. Allocate in PSRAM.
+### Next steps
 
-### PCF85063 driver — directly reusable, but alarm support missing
-`aitjcize/esp32-photoframe/components/rtc_driver_pcf85063/src/pcf85063.c` is pure C, uses
-new-style ESP-IDF `i2c_master` API, confirmed address 0x51, 100 kHz. OSF-bit check on read.
-**The driver implements only time read/write — no alarm register support.**
-Alarm registers (0x0B–0x0F) must be added before RTC-alarm wakeup is possible.
+- Flash with `TEST_MODE=y` to exercise all 6 palette colours
+- Phase 5: RTC alarm + deep sleep wake cycle
 
-### AXP2101 driver — C++ / XPowersLib, not directly portable to pure C
-The aitjcize PMIC driver wraps XPowersLib (a C++ template library). The `begin()` call reads
-chip ID internally — if TG28 returns a different ID the call returns false and the PMIC is
-effectively disabled. Cannot directly use in a pure-C project.
+### Expected verification sequence
 
-Key sleep sequence (from axp2101.cpp `axp2101_basic_sleep_start()`):
-- Disables: DC2–5, ALDO1–2, BLDO1–2, CPUSLDO, DLDO1–2, ALDO3, ALDO4
-- Keeps: DC1 (3.3V system rail)
-- Wakeup source set to: AXP2101 IRQ pin → ESP32-S3 EXT wakeup (NOT direct PCF85063 INTB)
-
-This means the intended wakeup path is: PCF85063 alarm → AXP2101 IRQ → ESP32-S3 wakeup.
-Verify from schematic whether PCF85063 INTB connects to AXP2101 or directly to an ESP32-S3 GPIO.
-
-### Waveshare Jan 2026 update — image formats, NOT TG28
-The Jan 2026 commits added JPG/PNG/BMP decode support. **No TG28 PMIC support added.**
-TG28 remains entirely unaddressed in all known open-source code.
-
-### Image pipeline — concrete details from Waveshare imgdecode_app.cpp
-- **JPEG**: `esp_jpeg_decode_one_picture()` — ESP-IDF built-in, outputs RGB888
-- **PNG**: libpng, streaming 128 rows at a time, all allocations in PSRAM
-- **BMP**: custom decoder, 24-bit uncompressed only, handles bottom-up storage
-- **Scaling**: fixed-point bilinear interpolation (×1024), despite "Nearest" in function name
-- **Dithering**: Floyd-Steinberg, but uses **theoretical palette** (pure sRGB), not measured
-- **Bug noted**: working buffer for FS dithering is `malloc()` (DRAM) — at 800×480×3 = 1.15 MB
-  this will crash. Must use `heap_caps_malloc(MALLOC_CAP_SPIRAM)`.
-
-### aitjcize component map (all directly relevant to our project)
-| Component | Files | Usability |
-|-----------|-------|-----------|
-| `board_hal` | `driver_waveshare_photopainter_73.c` | Adapt (C, our exact board) |
-| `rtc_driver_pcf85063` | `pcf85063.c` | Port directly; add alarm support |
-| `pmic_driver_axp2101` | `axp2101.cpp` + XPowersLib | C++ — adapt logic, not code |
-| `epaper_src` | `GUI_Paint.c`, `GUI_BMPfile.c` etc. | Port/reference |
-| `sensor_driver_shtc3` | — | Optional, port if needed |
-
-### Open Questions (updated)
-- Does TG28 respond at 0x34 and return 0x47 from register 0x03? **(hardware only)**
-- Does PCF85063 INTB connect to AXP2101 IRQ or directly to an ESP32-S3 GPIO? **(check schematic)**
-- Does aitjcize use SDIO or SPI for SD card? (Likely SDIO — pins CLK/CMD/D0-D3 referenced in board HAL)
-- Exact measured Spectra 6 palette RGB values — find in aitjcize epaper component
+1. `idf.py build` — clean compile
+2. Flash TEST_MODE build
+3. Verify PMIC init (chip ID 0x4A logged), ALDO3 on/off
+4. Verify RTC init (PCF85063 detected)
+5. Verify EPD solid white — if BUSY clears, the root-cause fix is confirmed
+6. Verify all 6 palette colours
 
 ---
 
-## 2026-02-21 — Project Initialisation
+## Historical — Phases 1–3 (abandoned 2026-03-08)
 
-- Created project repository with initial ESP-IDF scaffold placeholder
-- Documented hardware in CLAUDE.md: ESP32-S3-WROOM-1-N16R8, 7.3" Spectra 6 EPD, TG28 PMIC,
-  PCF85063 RTC, SHTC3 temp/humidity, ES7210/ES8311 audio (not used)
-- Confirmed board revision has TG28 PMIC, not AXP2101
-- Identified key reference firmware: aitjcize/esp32-photoframe, Waveshare demo
-- Identified key risk: TG28 register compatibility with AXP2101 unverified — no public datasheet
-- Created PLAN.md, DECISIONS.md, TODO.md, TEST_PLAN.md
+All code from phases 1–3 has been deleted. Key findings are preserved in
+DECISIONS.md and MEMORY.md.
 
----
-
-<!-- Template for future entries:
-
-## YYYY-MM-DD — <short description>
-
-- Bullet points of what was done
-- Findings (especially hardware / register discoveries)
-- Decisions made (cross-ref DECISIONS.md ADR number)
-- Items moved from TODO to done
-
-### Blocked / Issues
-- ...
-
--->
+- **Phase 1** (2026-02-21): Hardware bring-up. GPIO map confirmed from schematic.
+  SD card 4-bit SDIO verified. I2C bus + device addresses confirmed.
+- **Phase 2** (2026-02-22): AXP2101 pure-C PMIC driver. Write test passed.
+  Chip ID 0x4A confirmed. I2C pattern confirmed (persistent device handle,
+  `transmit_receive` is synchronous).
+- **Phase 3** (2026-02-22 – 2026-03-02): EPD driver. Code-complete but never
+  displayed an image. BUSY-stuck bug after 0x04 PON. Root cause identified
+  post-mortem (see above). Branch `phase3-epd-driver` abandoned.
