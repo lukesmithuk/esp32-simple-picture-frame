@@ -1,5 +1,10 @@
+set(srcs "main.c")
+if(CONFIG_TEST_MODE)
+    list(APPEND srcs "test_main.c")
+endif()
+
 idf_component_register(
-    SRCS "main.c" "test_main.c"
+    SRCS ${srcs}
     INCLUDE_DIRS "."
     REQUIRES
         board

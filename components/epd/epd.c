@@ -295,8 +295,8 @@ void epd_deinit(void)
     if (s_spi) {
         spi_bus_remove_device(s_spi);
         s_spi = NULL;
+        spi_bus_free(EPD_SPI_HOST);
     }
-    spi_bus_free(EPD_SPI_HOST);
     ESP_LOGI(TAG, "EPD deinit complete");
 }
 

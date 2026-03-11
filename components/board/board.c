@@ -166,7 +166,7 @@ int board_bb_i2c_read(uint8_t dev_addr, uint8_t reg_addr,
 }
 
 int board_bb_i2c_write(uint8_t dev_addr, uint8_t reg_addr,
-                       uint8_t *data, uint8_t len)
+                       const uint8_t *data, uint8_t len)
 {
     bb_start();
     if (!bb_write_byte(dev_addr << 1)) { bb_stop(); return -1; }

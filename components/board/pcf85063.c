@@ -122,7 +122,10 @@ esp_err_t pcf85063_write_time(time_t time_in)
     data[3] = dec_to_bcd(timeinfo.tm_mday) & 0x3F;
     data[4] = dec_to_bcd(timeinfo.tm_wday) & 0x07;
     data[5] = dec_to_bcd(timeinfo.tm_mon + 1) & 0x1F;
-    data[6] = dec_to_bcd((timeinfo.tm_year + 1900) - 2000);
+    int year = timeinfo.tm_year + 1900;
+    if (year < 2000) year = 2000;
+    if (year > 2099) year = 2099;
+    data[6] = dec_to_bcd(year - 2000);
 
     if (board_bb_i2c_write(PCF85063_ADDR, PCF85063_ADDR_SECONDS, data, 7) != 0) {
         ESP_LOGE(TAG, "Failed to write time to PCF85063ATL");
