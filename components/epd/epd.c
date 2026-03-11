@@ -79,7 +79,7 @@ static void cmd_data(uint8_t cmd, const uint8_t *data, size_t len)
     };
     esp_err_t ret = spi_device_polling_start(s_spi, &cmd_t.base, portMAX_DELAY);
     if (ret == ESP_OK) {
-        spi_device_polling_end(s_spi, portMAX_DELAY);
+        ret = spi_device_polling_end(s_spi, portMAX_DELAY);
     }
     assert(ret == ESP_OK);
 
