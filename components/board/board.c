@@ -54,7 +54,9 @@ static void i2c_bus_init(void)
         esp_rom_delay_us(10);
     }
 
-    /* STOP condition: SDA low → SCL high → SDA high */
+    /* STOP condition: SCL low → SDA low → SCL high → SDA high */
+    gpio_set_level(BOARD_I2C_SCL, 0);
+    esp_rom_delay_us(10);
     gpio_set_level(BOARD_I2C_SDA, 0);
     esp_rom_delay_us(10);
     gpio_set_level(BOARD_I2C_SCL, 1);
