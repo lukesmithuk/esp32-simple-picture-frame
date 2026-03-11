@@ -13,6 +13,7 @@
 
 static const char *TAG = "main";
 
+#ifndef CONFIG_DISABLE_DEEP_SLEEP
 /* Wake interval. TODO: make configurable / load from SD. */
 #define WAKE_INTERVAL_HOURS   1
 #define WAKE_INTERVAL_MINUTES 0
@@ -43,6 +44,7 @@ static void set_next_alarm(void)
         ESP_LOGE(TAG, "Failed to set alarm: %s", esp_err_to_name(ret));
     }
 }
+#endif
 
 void app_main(void)
 {
@@ -54,6 +56,18 @@ void app_main(void)
     }
 
     ESP_ERROR_CHECK(board_init());
+
+    /* Log current RTC time */
+    if (board_rtc_is_available()) {
+        time_t now;
+        if (board_rtc_get_time(&now) == ESP_OK) {
+            struct tm t;
+            localtime_r(&now, &t);
+            ESP_LOGI(TAG, "RTC time: %04d-%02d-%02d %02d:%02d:%02d",
+                     t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
+                     t.tm_hour, t.tm_min, t.tm_sec);
+        }
+    }
 
     /* Clear alarm flag from previous wake (or stale flag from cold boot) */
     board_rtc_clear_alarm_flag();
