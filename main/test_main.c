@@ -1,5 +1,7 @@
 #include "test_main.h"
 
+#include <string.h>
+
 #include "board.h"
 #include "epd.h"
 #include "esp_log.h"
@@ -53,16 +55,17 @@ static void test_board_rtc(void)
     }
 }
 
-static void test_epd_solid_colors(void)
+static void test_epd_color_bars(void)
 {
-    static const struct { epd_color_t color; const char *name; } colors[] = {
-        { EPD_COLOR_WHITE,  "white"  },
-        { EPD_COLOR_BLACK,  "black"  },
-        { EPD_COLOR_RED,    "red"    },
-        { EPD_COLOR_GREEN,  "green"  },
-        { EPD_COLOR_BLUE,   "blue"   },
-        { EPD_COLOR_YELLOW, "yellow" },
+    static const epd_color_t colors[] = {
+        EPD_COLOR_BLACK, EPD_COLOR_WHITE, EPD_COLOR_GREEN,
+        EPD_COLOR_BLUE,  EPD_COLOR_RED,   EPD_COLOR_YELLOW,
+        EPD_COLOR_ORANGE,
     };
+    static const char *names[] = {
+        "black", "white", "green", "blue", "red", "yellow", "orange",
+    };
+    const int num_colors = sizeof(colors) / sizeof(colors[0]);
 
     CHECK("board_epd_power ON", board_epd_power(true));
     CHECK("epd_init", epd_init());
@@ -76,16 +79,19 @@ static void test_epd_solid_colors(void)
     }
     PASS("epd_alloc_frame_buf");
 
-    for (size_t i = 0; i < sizeof(colors) / sizeof(colors[0]); i++) {
-        ESP_LOGI(TAG, "Displaying solid %s ...", colors[i].name);
-        epd_fill_color(fb, colors[i].color);
-        esp_err_t ret = epd_display(fb);
-        char test_name[32];
-        snprintf(test_name, sizeof(test_name), "epd_display_%s", colors[i].name);
-        CHECK(test_name, ret);
-        /* Pause between colours so display can be observed */
-        vTaskDelay(pdMS_TO_TICKS(3000));
+    /* Fill horizontal stripes, one per palette color */
+    const int stripe_h = EPD_HEIGHT / num_colors;
+    for (int c = 0; c < num_colors; c++) {
+        uint8_t byte = (colors[c] << 4) | colors[c];
+        int y_start = c * stripe_h;
+        int y_end = (c == num_colors - 1) ? EPD_HEIGHT : y_start + stripe_h;
+        memset(&fb[y_start * (EPD_WIDTH / 2)], byte,
+               (y_end - y_start) * (EPD_WIDTH / 2));
+        ESP_LOGI(TAG, "  Stripe %d: rows %d–%d = %s", c, y_start, y_end - 1, names[c]);
     }
+
+    ESP_LOGI(TAG, "Displaying color bars ...");
+    CHECK("epd_display_color_bars", epd_display(fb));
 
     free(fb);
     epd_deinit();
@@ -100,7 +106,7 @@ void tests_run(void)
 
     test_board_pmic();
     test_board_rtc();
-    test_epd_solid_colors();
+    test_epd_color_bars();
 
     ESP_LOGI(TAG, "=== Tests complete ===");
 }
