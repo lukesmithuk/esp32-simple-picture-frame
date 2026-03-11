@@ -7,4 +7,12 @@ menu "Picture Frame"
             When enabled, app_main() runs the hardware integration test suite
             instead of the normal display update cycle.
 
+    config DISABLE_DEEP_SLEEP
+        bool "Disable deep sleep (development)"
+        default y
+        help
+            When enabled, the board halts after displaying instead of entering
+            deep sleep. Keeps USB-JTAG serial alive for reflashing and debugging.
+            Disable for production use.
+
 endmenu

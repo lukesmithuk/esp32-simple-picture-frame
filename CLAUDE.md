@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ESP32-S3 e-paper picture frame firmware for the Waveshare ESP32-S3-PhotoPainter board. The device wakes from deep sleep on an RTC alarm, loads an image from SD card, dithers it to the 6-colour e-paper palette, renders it, then sleeps again. ESP-IDF v5.5.3. Primarily C; C++ components are acceptable where useful (e.g. third-party drivers).
+ESP32-S3 e-paper picture frame firmware for the Waveshare ESP32-S3-PhotoPainter board. The device wakes from deep sleep on an RTC alarm, loads an image from SD card, dithers it to the 7-colour e-paper palette, renders it, then sleeps again. ESP-IDF v5.5.3. Primarily C; C++ components are acceptable where useful (e.g. third-party drivers).
+
+All I2C is bit-banged (~100 kHz). The IDF v5.5.3 I2C master driver on ESP32-S3 fires corrupt SCL clear-bus pulses on transaction timeouts, permanently wedging the PMIC after RTS-triggered reset.
 
 ## Hardware: Waveshare ESP32-S3-PhotoPainter
 

@@ -1,4 +1,7 @@
+#include <time.h>
+
 #include "esp_log.h"
+#include "esp_sleep.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "board.h"
@@ -10,15 +13,67 @@
 
 static const char *TAG = "main";
 
+#ifndef CONFIG_DISABLE_DEEP_SLEEP
+/* Wake interval. TODO: make configurable / load from SD. */
+#define WAKE_INTERVAL_HOURS   1
+#define WAKE_INTERVAL_MINUTES 0
+#define WAKE_INTERVAL_SECONDS 0
+
+static void set_next_alarm(void)
+{
+    if (!board_rtc_is_available())
+        return;
+
+    time_t now;
+    if (board_rtc_get_time(&now) != ESP_OK) {
+        ESP_LOGW(TAG, "Cannot read RTC — skipping alarm set");
+        return;
+    }
+
+    time_t next = now + WAKE_INTERVAL_HOURS * 3600
+                      + WAKE_INTERVAL_MINUTES * 60
+                      + WAKE_INTERVAL_SECONDS;
+    struct tm t;
+    localtime_r(&now, &t);
+    ESP_LOGD(TAG, "NOW : %02d:%02d:%02d", t.tm_hour, t.tm_min, t.tm_sec);
+    localtime_r(&next, &t);
+    ESP_LOGD(TAG, "NEXT: %02d:%02d:%02d", t.tm_hour, t.tm_min, t.tm_sec);
+
+    esp_err_t ret = board_rtc_set_alarm(t.tm_hour, t.tm_min, t.tm_sec);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set alarm: %s", esp_err_to_name(ret));
+    }
+}
+#endif
+
 void app_main(void)
 {
-    ESP_LOGI(TAG, "esp32-picture-frame starting");
+    esp_sleep_wakeup_cause_t wakeup = esp_sleep_get_wakeup_cause();
+    if (wakeup == ESP_SLEEP_WAKEUP_EXT0) {
+        ESP_LOGI(TAG, "Woke from deep sleep (RTC alarm)");
+    } else {
+        ESP_LOGI(TAG, "esp32-picture-frame starting (cold boot)");
+    }
 
     ESP_ERROR_CHECK(board_init());
 
+    /* Log current RTC time */
+    if (board_rtc_is_available()) {
+        time_t now;
+        if (board_rtc_get_time(&now) == ESP_OK) {
+            struct tm t;
+            localtime_r(&now, &t);
+            ESP_LOGI(TAG, "RTC time: %04d-%02d-%02d %02d:%02d:%02d",
+                     t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
+                     t.tm_hour, t.tm_min, t.tm_sec);
+        }
+    }
+
+    /* Clear alarm flag from previous wake (or stale flag from cold boot) */
+    board_rtc_clear_alarm_flag();
+
 #ifdef CONFIG_TEST_MODE
     tests_run();
-    /* Test mode: loop forever so output can be read. */
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
@@ -48,10 +103,15 @@ sleep:
     epd_deinit();
     board_epd_power(false);
 
-    /* TODO Phase N: configure RTC alarm, then board_sleep() + esp_deep_sleep_start() */
-    ESP_LOGI(TAG, "Done — halting (deep sleep not yet wired)");
+#ifdef CONFIG_DISABLE_DEEP_SLEEP
+    ESP_LOGI(TAG, "Deep sleep disabled — halting");
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(5000));
     }
+#else
+    set_next_alarm();
+    board_enter_deep_sleep();
+    /* Does not return */
+#endif
 #endif
 }
