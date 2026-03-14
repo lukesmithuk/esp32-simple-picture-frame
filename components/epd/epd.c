@@ -280,10 +280,40 @@ esp_err_t epd_init(void)
     return ESP_OK;
 }
 
+/**
+ * Rotate the frame buffer 180° in-place.
+ * The panel scans bottom-right to top-left relative to the logical
+ * coordinate system, so we reverse byte order and swap nibbles.
+ */
+static void rotate_180(uint8_t *buf, size_t len)
+{
+    uint8_t *lo = buf;
+    uint8_t *hi = buf + len - 1;
+    while (lo < hi) {
+        uint8_t a = *lo, b = *hi;
+        *lo++ = (b >> 4) | (b << 4);
+        *hi-- = (a >> 4) | (a << 4);
+    }
+    if (lo == hi) {
+        *lo = (*lo >> 4) | (*lo << 4);
+    }
+}
+
 esp_err_t epd_display(const uint8_t *frame_buf)
 {
     ESP_LOGI(TAG, "Starting display update (%d bytes)", EPD_BUF_SIZE);
-    esp_err_t ret = display_update_cycle(frame_buf);
+
+    /* Rotate 180° into a temporary copy — the caller's buffer is const. */
+    uint8_t *rotated = heap_caps_malloc(EPD_BUF_SIZE, MALLOC_CAP_SPIRAM);
+    if (!rotated) {
+        ESP_LOGE(TAG, "Failed to alloc rotation buffer");
+        return ESP_ERR_NO_MEM;
+    }
+    memcpy(rotated, frame_buf, EPD_BUF_SIZE);
+    rotate_180(rotated, EPD_BUF_SIZE);
+
+    esp_err_t ret = display_update_cycle(rotated);
+    free(rotated);
     if (ret == ESP_OK) {
         ESP_LOGI(TAG, "Display update complete");
     }
