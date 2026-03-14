@@ -14,5 +14,9 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 # Logging
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
 
+# FAT filesystem — long filename support for SD card
+CONFIG_FATFS_LFN_HEAP=y
+CONFIG_FATFS_MAX_LFN=255
+
 # Partition table — single factory app, no OTA
 CONFIG_PARTITION_TABLE_SINGLE_APP=y

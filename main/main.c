@@ -6,12 +6,21 @@
 #include "freertos/task.h"
 #include "board.h"
 #include "epd.h"
+#include "sdcard.h"
+#include "image_picker.h"
+#include "image_loader.h"
+#include "epd_text.h"
+#include "errlog.h"
 
 #ifdef CONFIG_TEST_MODE
 #include "test_main.h"
 #endif
 
 static const char *TAG = "main";
+static const char *image_exts[] = {"jpg", "jpeg", NULL};
+
+#define IMAGE_DIR  SDCARD_MOUNT_POINT "/images"
+#define ERROR_LOG  SDCARD_MOUNT_POINT "/error.log"
 
 #ifndef CONFIG_DISABLE_DEEP_SLEEP
 /* Wake interval. TODO: make configurable / load from SD. */
@@ -46,6 +55,14 @@ static void set_next_alarm(void)
 }
 #endif
 
+static void show_error(uint8_t *frame_buf, const char *message)
+{
+    epd_fill_color(frame_buf, EPD_COLOR_WHITE);
+    epd_text_draw_centred(frame_buf, EPD_HEIGHT / 2 - 16,
+                          message, EPD_COLOR_BLACK, EPD_COLOR_WHITE, 4);
+    epd_display(frame_buf);
+}
+
 void app_main(void)
 {
     esp_sleep_wakeup_cause_t wakeup = esp_sleep_get_wakeup_cause();
@@ -79,23 +96,65 @@ void app_main(void)
     }
 #else
     /* Production path -------------------------------------------------- */
+    uint8_t *frame_buf = NULL;
+    uint8_t *img_buf = NULL;
+    bool sd_mounted = false;
+    esp_err_t ret;
+
     ESP_ERROR_CHECK(board_epd_power(true));
     ESP_ERROR_CHECK(epd_init());
 
-    uint8_t *frame_buf = epd_alloc_frame_buf();
+    frame_buf = epd_alloc_frame_buf();
     if (!frame_buf) {
         ESP_LOGE(TAG, "Failed to allocate frame buffer");
         goto sleep;
     }
 
-    /* TODO: load image from SD card and dither into frame_buf.
-     * For now display a solid white test pattern. */
+    /* Mount SD card */
+    ret = sdcard_mount();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "SD card mount failed");
+        show_error(frame_buf, "No SD card");
+        goto sleep;
+    }
+    sd_mounted = true;
+
+    /* Pick a random image */
+    char img_path[IMAGE_PICKER_PATH_MAX];
+    ret = image_picker_pick(IMAGE_DIR, image_exts, img_path);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "No images found in " IMAGE_DIR);
+        errlog_write(ERROR_LOG, "No images found in " IMAGE_DIR);
+        show_error(frame_buf, "No images found");
+        goto unmount;
+    }
+
+    /* Load image file into PSRAM */
+    size_t img_size = 0;
+    ret = image_loader_load(img_path, &img_buf, &img_size);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to load: %s", img_path);
+        errlog_write(ERROR_LOG, "Failed to load image");
+        show_error(frame_buf, "Image load error");
+        goto unmount;
+    }
+
+    /* TODO Phase 7: JPEG decode + scale + dither img_buf → frame_buf.
+     * For now display a white placeholder to prove the pipeline works. */
+    ESP_LOGI(TAG, "Loaded %zu bytes from %s (decode not yet implemented)",
+             img_size, img_path);
     epd_fill_color(frame_buf, EPD_COLOR_WHITE);
 
     ESP_LOGI(TAG, "Displaying frame");
-    esp_err_t ret = epd_display(frame_buf);
+    ret = epd_display(frame_buf);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "epd_display failed: %s", esp_err_to_name(ret));
+    }
+
+unmount:
+    free(img_buf);      /* free(NULL) is a no-op per C99 */
+    if (sd_mounted) {
+        sdcard_unmount();
     }
 
 sleep:
