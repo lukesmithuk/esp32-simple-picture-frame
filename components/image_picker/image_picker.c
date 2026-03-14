@@ -121,7 +121,8 @@ esp_err_t image_picker_pick(const char *dir_path,
                             const char *const *exts,
                             char *out_path)
 {
-    /* Allocate working buffers from PSRAM (3 × 32 KB = 96 KB). */
+    /* Allocate working buffers from PSRAM (3 × 32 KB = 96 KB).
+     * TODO: candidates could be eliminated with a two-pass count+seek approach. */
     name_list_t *files      = heap_caps_malloc(sizeof(name_list_t), MALLOC_CAP_SPIRAM);
     name_list_t *history    = heap_caps_malloc(sizeof(name_list_t), MALLOC_CAP_SPIRAM);
     name_list_t *candidates = heap_caps_malloc(sizeof(name_list_t), MALLOC_CAP_SPIRAM);

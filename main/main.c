@@ -177,7 +177,7 @@ sleep:
         vTaskDelay(pdMS_TO_TICKS(5000));
     }
 #else
-    set_next_alarm();
+    set_next_alarm();   /* reads config values from RAM — safe after SD unmount */
     board_enter_deep_sleep();
     /* Does not return */
 #endif

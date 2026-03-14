@@ -26,7 +26,10 @@ static char *trim(char *s)
 {
     while (isspace((unsigned char)*s))
         s++;
-    char *end = s + strlen(s) - 1;
+    size_t len = strlen(s);
+    if (len == 0)
+        return s;
+    char *end = s + len - 1;
     while (end > s && isspace((unsigned char)*end))
         *end-- = '\0';
     return s;

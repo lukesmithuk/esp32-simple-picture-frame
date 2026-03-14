@@ -72,6 +72,12 @@ esp_err_t applog_start(const char *log_path)
         return ESP_OK;
     }
 
+    /* If applog_init() was not called, capture the original handler now. */
+    if (!s_original_vprintf) {
+        s_original_vprintf = esp_log_set_vprintf(log_to_file_and_serial);
+    }
+
+    /* TODO: log file grows unbounded — consider truncation or rotation. */
     s_log_file = fopen(log_path, "a");
     if (!s_log_file) {
         ESP_LOGW(TAG, "Cannot open log file: %s", log_path);
@@ -85,8 +91,7 @@ esp_err_t applog_start(const char *log_path)
     }
     s_buffering = false;
 
-    /* Switch from buffer handler to file handler.  s_original_vprintf
-     * was already captured by applog_init(). */
+    /* Switch to file handler (may already be set if applog_init() was skipped). */
     esp_log_set_vprintf(log_to_file_and_serial);
 
     ESP_LOGI(TAG, "Log capture started → %s", log_path);
