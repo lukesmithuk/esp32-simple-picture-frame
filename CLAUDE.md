@@ -56,11 +56,12 @@ idf.py menuconfig
 | `board` | I2C bus, AXP2101 PMIC, PCF85063 RTC | `esp_hw_support`, `esp_driver_i2c` |
 | `epd` | SPI EPD driver (800x480, 6-colour Spectra 6, 4bpp) | `esp_driver_spi` |
 | `sdcard` | 4-bit SDIO mount/unmount at `/sdcard` | `fatfs`, `sdmmc`, `esp_driver_sdmmc` |
-| `image_picker` | Directory scan + random selection by extension | (none) |
+| `image_picker` | Directory scan + shuffle without repeat | `esp_hw_support` |
 | `image_loader` | File → PSRAM buffer (4MB max) | `esp_hw_support` |
-| `image_decode` | JPEG decode → scale → dither → 4bpp frame buffer | `esp_hw_support`, `espressif/esp_jpeg` |
+| `image_decode` | JPEG decode → scale → CDR → dither → 4bpp frame buffer | `esp_hw_support`, `espressif/esp_jpeg` |
 | `epd_text` | 8x8 bitmap font renderer for 4bpp frame buffer | `epd` (constants only) |
-| `errlog` | Timestamped error log append to file | (none) |
+| `applog` | ESP_LOG tee to SD card file + explicit log writes | (none) |
+| `config` | Key=value config file reader from SD card | (none) |
 
 ## IDF v5 Component Names
 

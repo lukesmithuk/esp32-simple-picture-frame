@@ -1,5 +1,22 @@
 # Progress Log
 
+## 2026-03-14 — Phase 9: Production Loop & Reliability
+
+### What was built
+
+- **applog component** (replaces errlog): buffers early-boot ESP_LOG to 4KB RAM,
+  flushes and tees all output to SD card file after mount.
+- **config component**: key=value config file reader from SD card. Supports
+  comments (#), whitespace trimming, typed getters with defaults.
+- **Image shuffle**: history file in image directory tracks shown images.
+  Cycles through all before repeating. Prunes history when files are
+  added/removed.
+- **Configurable wake interval**: reads `wake_interval_hours/minutes/seconds`
+  from `/sdcard/config.txt`. Defaults to 1h 0m 0s.
+- **Full production cycle verified**: wake → decode → display → sleep → repeat.
+
+---
+
 ## 2026-03-14 — Phase 7: JPEG Decode + Scale + CDR + Dither
 
 ### What was built
