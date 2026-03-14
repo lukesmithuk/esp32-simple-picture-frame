@@ -15,4 +15,5 @@ idf_component_register(
         image_decode
         epd_text
         applog
+        config
 )

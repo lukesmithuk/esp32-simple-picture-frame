@@ -11,6 +11,7 @@
 #include "image_loader.h"
 #include "epd_text.h"
 #include "applog.h"
+#include "config.h"
 #include "image_decode.h"
 
 #ifdef CONFIG_TEST_MODE
@@ -20,15 +21,11 @@
 static const char *TAG = "main";
 static const char *image_exts[] = {"jpg", "jpeg", NULL};
 
-#define IMAGE_DIR   SDCARD_MOUNT_POINT "/images"
-#define SYSTEM_LOG  SDCARD_MOUNT_POINT "/system.log"
+#define IMAGE_DIR    SDCARD_MOUNT_POINT "/images"
+#define SYSTEM_LOG   SDCARD_MOUNT_POINT "/system.log"
+#define CONFIG_PATH  SDCARD_MOUNT_POINT "/config.txt"
 
 #ifndef CONFIG_DISABLE_DEEP_SLEEP
-/* Wake interval. TODO: make configurable / load from SD. */
-#define WAKE_INTERVAL_HOURS   1
-#define WAKE_INTERVAL_MINUTES 0
-#define WAKE_INTERVAL_SECONDS 0
-
 static void set_next_alarm(void)
 {
     if (!board_rtc_is_available())
@@ -40,14 +37,15 @@ static void set_next_alarm(void)
         return;
     }
 
-    time_t next = now + WAKE_INTERVAL_HOURS * 3600
-                      + WAKE_INTERVAL_MINUTES * 60
-                      + WAKE_INTERVAL_SECONDS;
+    int hours   = config_get_int("wake_interval_hours", 1);
+    int minutes = config_get_int("wake_interval_minutes", 0);
+    int seconds = config_get_int("wake_interval_seconds", 0);
+    ESP_LOGI(TAG, "Wake interval: %dh %dm %ds", hours, minutes, seconds);
+
+    time_t next = now + hours * 3600 + minutes * 60 + seconds;
     struct tm t;
-    localtime_r(&now, &t);
-    ESP_LOGD(TAG, "NOW : %02d:%02d:%02d", t.tm_hour, t.tm_min, t.tm_sec);
     localtime_r(&next, &t);
-    ESP_LOGD(TAG, "NEXT: %02d:%02d:%02d", t.tm_hour, t.tm_min, t.tm_sec);
+    ESP_LOGI(TAG, "Next alarm: %02d:%02d:%02d", t.tm_hour, t.tm_min, t.tm_sec);
 
     esp_err_t ret = board_rtc_set_alarm(t.tm_hour, t.tm_min, t.tm_sec);
     if (ret != ESP_OK) {
@@ -124,6 +122,9 @@ void app_main(void)
 
     /* Start logging all ESP_LOG output to SD card. */
     applog_start(SYSTEM_LOG);
+
+    /* Load config (wake interval, etc.). Missing file uses defaults. */
+    config_load(CONFIG_PATH);
 
     /* Pick a random image */
     char img_path[IMAGE_PICKER_PATH_MAX];
