@@ -18,10 +18,11 @@ extern "C" {
 typedef enum {
     EPD_COLOR_BLACK  = 0,
     EPD_COLOR_WHITE  = 1,
-    EPD_COLOR_GREEN  = 2,
-    EPD_COLOR_BLUE   = 3,
-    EPD_COLOR_RED    = 4,
-    EPD_COLOR_YELLOW = 5,
+    EPD_COLOR_YELLOW = 2,
+    EPD_COLOR_RED    = 3,
+    /* 4 = clean/reserved — not a displayable colour */
+    EPD_COLOR_BLUE   = 5,
+    EPD_COLOR_GREEN  = 6,
 } epd_color_t;
 
 /**

@@ -15,15 +15,25 @@
 static const char *TAG = "image_decode";
 
 /* Measured palette RGB values for the Spectra 6 e-paper panel.
- * Indices match epd_color_t (0–5).  Source: aitjcize/esp32-photoframe
- * calibration, Waveshare 7.3" ACeP panel.  */
+ * Source: aitjcize/esp32-photoframe calibration, Waveshare 7.3" ACeP.
+ * Array is contiguous (0–5); PALETTE_TO_EPD maps to panel indices. */
 static const uint8_t PALETTE_RGB[PALETTE_COUNT][3] = {
-    {  2,   2,   2},   /* EPD_COLOR_BLACK  = 0 */
-    {190, 200, 200},   /* EPD_COLOR_WHITE  = 1 */
-    { 39, 102,  60},   /* EPD_COLOR_GREEN  = 2 */
-    {  5,  64, 158},   /* EPD_COLOR_BLUE   = 3 */
-    {135,  19,   0},   /* EPD_COLOR_RED    = 4 */
-    {205, 202,   0},   /* EPD_COLOR_YELLOW = 5 */
+    {  2,   2,   2},   /* [0] Black  */
+    {190, 200, 200},   /* [1] White  */
+    {205, 202,   0},   /* [2] Yellow */
+    {135,  19,   0},   /* [3] Red    */
+    {  5,  64, 158},   /* [4] Blue   */
+    { 39, 102,  60},   /* [5] Green  */
+};
+
+/* Map contiguous palette index → panel 4bpp index (epd_color_t). */
+static const uint8_t PALETTE_TO_EPD[PALETTE_COUNT] = {
+    0,  /* Black  → EPD 0 */
+    1,  /* White  → EPD 1 */
+    2,  /* Yellow → EPD 2 */
+    3,  /* Red    → EPD 3 */
+    5,  /* Blue   → EPD 5 */
+    6,  /* Green  → EPD 6 */
 };
 
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
@@ -233,7 +243,7 @@ static esp_err_t dither_to_framebuf(uint8_t *rgb_scaled, uint8_t *frame_buf)
             int b = clamp(rgb_scaled[img_idx + 2] + err_cur[err_idx + 2], 0, 255);
 
             int ci = find_closest_color(r, g, b);
-            pack_pixel(frame_buf, x, y, (uint8_t)ci);
+            pack_pixel(frame_buf, x, y, PALETTE_TO_EPD[ci]);
 
             int er = r - PALETTE_RGB[ci][0];
             int eg = g - PALETTE_RGB[ci][1];
