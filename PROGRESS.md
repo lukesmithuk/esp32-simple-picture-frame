@@ -1,6 +1,49 @@
 # Progress Log
 
-## 2026-03-08 — Phase 4: Architecture + Fresh Implementation (current)
+## 2026-03-14 — Phase 7: JPEG Decode + Scale + CDR + Dither
+
+### What was built
+
+New `image_decode` component implementing the full image pipeline:
+JPEG decode (TJpgDec via ESP32-S3 ROM) → nearest-neighbor cover-mode scale to
+800×480 → compress dynamic range (CDR) → Floyd-Steinberg dither with measured
+Spectra 6 palette → 4bpp packed frame buffer.
+
+Added `espressif/esp_jpeg` as a managed component dependency.
+
+### Bugs found and fixed
+
+- **`epd_color_t` wrong since Phase 4** — indices didn't match the actual panel
+  hardware. Corrected to: 0=Black, 1=White, 2=Yellow, 3=Red, 5=Blue, 6=Green.
+  The panel is Spectra 6 (E6) with 6 colours — no Orange. Index 4 is reserved.
+- **Panel 180° orientation** — panel scans from bottom-right origin. Fixed by
+  adding buffer rotation (reverse bytes + swap nibbles) in `epd_display()`.
+- **EPD_COLOR_ORANGE removed** — was never a real colour on this panel.
+
+### Known limitations
+
+- **Baseline JPEG only** — progressive JPEG not supported (TJpgDec limitation)
+- **No EXIF orientation** — images with EXIF rotation tags display incorrectly
+- **No portrait rotation** — portrait images get cropped, not rotated
+
+---
+
+## 2026-03-14 — Phase 6: SD Card + Image Pipeline Skeleton
+
+SD card mount (4-bit SDIO), image picker (random selection), image loader
+(file → PSRAM buffer), error text display on EPD, error logging to file.
+All verified on hardware. Merged as PR #7.
+
+---
+
+## 2026-03-10 — Phase 5: RTC Alarm + Deep Sleep
+
+PCF85063 alarm implementation, ESP32 EXT0 wakeup on GPIO6, compile-time
+RTC init, full sleep/wake cycle. Merged as PR #6.
+
+---
+
+## 2026-03-08 — Phase 4: Architecture + Fresh Implementation
 
 ### Context
 

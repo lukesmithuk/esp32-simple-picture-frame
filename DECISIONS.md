@@ -132,3 +132,67 @@ the rails before enabling.
 for pure logic (e.g. dithering algorithm, image scaling). Hardware-in-the-loop
 tests require the physical board and are best driven by the existing serial
 capture workflow.
+
+---
+
+## ADR-010 — Spectra 6 panel colour indices
+
+**Status:** Accepted
+**Date:** 2026-03-14
+
+**Decision:** `epd_color_t` uses the actual panel hardware indices:
+0=Black, 1=White, 2=Yellow, 3=Red, 5=Blue, 6=Green. Index 4 is reserved
+(clean). Orange does not exist on this panel.
+
+**Rationale:** The panel is E Ink Spectra 6 (E6) with 6 physical pigments.
+Confirmed from aitjcize's `epaper.h` defines and Waveshare product page.
+The previous enum (Green=2, Blue=3, Red=4, Yellow=5, Orange=6) was wrong
+and caused incorrect colour output during dithering.
+
+---
+
+## ADR-011 — 180° frame buffer rotation in epd_display
+
+**Status:** Accepted
+**Date:** 2026-03-14
+
+**Decision:** `epd_display()` rotates the frame buffer 180° (reverse byte
+order + swap nibbles) into a temporary PSRAM copy before SPI transfer.
+
+**Rationale:** The panel's scan origin is bottom-right, but our logical
+coordinate system (and text renderer) assumes top-left origin. Rotating
+at the driver level fixes all content (images, text, error messages)
+without requiring each component to handle orientation. The 192 KB temp
+buffer is freed immediately after transfer.
+
+---
+
+## ADR-012 — Measured palette for Floyd-Steinberg dithering
+
+**Status:** Accepted
+**Date:** 2026-03-14
+
+**Decision:** Dithering uses measured RGB values from the physical panel
+rather than theoretical sRGB values. Source: aitjcize/esp32-photoframe
+calibration data.
+
+**Rationale:** E-paper displays show colours 30–70% darker than theoretical
+values (e.g. white is actually (190,200,200) not (255,255,255)). Using
+measured values for colour distance calculations and error diffusion
+produces significantly more accurate dithering output.
+
+---
+
+## ADR-013 — Dynamic range compression before dithering
+
+**Status:** Accepted
+**Date:** 2026-03-14
+
+**Decision:** Apply compress-dynamic-range (CDR) pass between scaling and
+dithering. Uses sRGB↔linear LUTs and BT.709 luminance to map the image's
+tonal range into [measured_black_Y, measured_white_Y].
+
+**Rationale:** The e-paper panel has ~90:1 dynamic range vs ~1000:1+ for
+typical displays. Without CDR, highlights crush to the same grey and
+shadows crush to the same near-black. CDR redistributes tones to use
+the panel's available range, preserving detail in highlights and shadows.
