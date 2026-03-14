@@ -59,7 +59,7 @@ static void show_error(uint8_t *frame_buf, const char *message)
 {
     epd_fill_color(frame_buf, EPD_COLOR_WHITE);
     epd_text_draw_centred(frame_buf, EPD_HEIGHT / 2 - 16,
-                          message, EPD_COLOR_RED, EPD_COLOR_WHITE, 3);
+                          message, EPD_COLOR_BLACK, EPD_COLOR_WHITE, 4);
     epd_display(frame_buf);
 }
 
