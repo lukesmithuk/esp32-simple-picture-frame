@@ -1,5 +1,6 @@
 #include "image_decode.h"
 
+#include <math.h>
 #include <string.h>
 
 #include "epd.h"
@@ -9,8 +10,10 @@
 #include "freertos/task.h"
 #include "jpeg_decoder.h"
 
-#define PALETTE_COUNT       6
-#define YIELD_EVERY_N_ROWS  48  /* yield every N rows to let other tasks run */
+#define PALETTE_COUNT        6
+#define YIELD_EVERY_N_ROWS   48   /* yield every N rows to let other tasks run */
+#define CDR_YIELD_EVERY      2000 /* yield every N pixels during CDR */
+#define LINEAR_LUT_SIZE      4096 /* resolution of linear→sRGB reverse LUT */
 
 static const char *TAG = "image_decode";
 
@@ -194,6 +197,108 @@ static esp_err_t scale_to_display(uint8_t *rgb_raw, int raw_w, int raw_h,
     return ESP_OK;
 }
 
+/* ── Compress dynamic range (CDR) ────────────────────────────────────────── */
+
+/* sRGB ↔ linear conversion LUTs.  Initialised once on first use. */
+static float    srgb_to_linear_lut[256];
+static uint8_t  linear_to_srgb_lut[LINEAR_LUT_SIZE];
+static bool     luts_initialised = false;
+
+static void init_gamma_luts(void)
+{
+    if (luts_initialised)
+        return;
+
+    for (int i = 0; i < 256; i++) {
+        float s = i / 255.0f;
+        srgb_to_linear_lut[i] = s > 0.04045f
+            ? powf((s + 0.055f) / 1.055f, 2.4f)
+            : s / 12.92f;
+    }
+
+    for (int i = 0; i < LINEAR_LUT_SIZE; i++) {
+        float lin = (float)i / (LINEAR_LUT_SIZE - 1);
+        float s = lin > 0.0031308f
+            ? 1.055f * powf(lin, 1.0f / 2.4f) - 0.055f
+            : 12.92f * lin;
+        int v = (int)roundf(s * 255.0f);
+        linear_to_srgb_lut[i] = (uint8_t)(v < 0 ? 0 : (v > 255 ? 255 : v));
+    }
+
+    luts_initialised = true;
+}
+
+static inline float srgb_to_linear(uint8_t v)
+{
+    return srgb_to_linear_lut[v];
+}
+
+static inline uint8_t linear_to_srgb(float lin)
+{
+    if (lin <= 0.0f) return 0;
+    if (lin >= 1.0f) return 255;
+    return linear_to_srgb_lut[(int)(lin * (LINEAR_LUT_SIZE - 1) + 0.5f)];
+}
+
+/**
+ * Compress the image's tonal range to fit the e-paper's limited dynamic
+ * range.  Operates in linear light: maps [0, 1] luminance into
+ * [black_Y, white_Y] derived from the measured palette.
+ */
+static void compress_dynamic_range(uint8_t *rgb, int width, int height)
+{
+    init_gamma_luts();
+
+    /* ITU-R BT.709 luminance coefficients. */
+    const float kr = 0.2126729f, kg = 0.7151522f, kb = 0.0721750f;
+
+    float black_Y = kr * srgb_to_linear(PALETTE_RGB[0][0])
+                  + kg * srgb_to_linear(PALETTE_RGB[0][1])
+                  + kb * srgb_to_linear(PALETTE_RGB[0][2]);
+    float white_Y = kr * srgb_to_linear(PALETTE_RGB[1][0])
+                  + kg * srgb_to_linear(PALETTE_RGB[1][1])
+                  + kb * srgb_to_linear(PALETTE_RGB[1][2]);
+    float range = white_Y - black_Y;
+
+    ESP_LOGI(TAG, "CDR: black_Y=%.4f white_Y=%.4f range=%.4f",
+             black_Y, white_Y, range);
+
+    int total = width * height;
+    for (int i = 0; i < total; i++) {
+        int idx = i * 3;
+
+        float lr = srgb_to_linear(rgb[idx]);
+        float lg = srgb_to_linear(rgb[idx + 1]);
+        float lb = srgb_to_linear(rgb[idx + 2]);
+
+        float Y = kr * lr + kg * lg + kb * lb;
+        float compressed_Y = black_Y + Y * range;
+
+        float scale;
+        if (Y > 1e-6f) {
+            scale = compressed_Y / Y;
+        } else {
+            scale = 0.0f;
+            lr = black_Y;
+            lg = black_Y;
+            lb = black_Y;
+        }
+
+        if (scale != 0.0f) {
+            lr *= scale;
+            lg *= scale;
+            lb *= scale;
+        }
+
+        rgb[idx]     = linear_to_srgb(lr);
+        rgb[idx + 1] = linear_to_srgb(lg);
+        rgb[idx + 2] = linear_to_srgb(lb);
+
+        if ((i % CDR_YIELD_EVERY) == 0)
+            vTaskDelay(1);
+    }
+}
+
 /* ── Floyd-Steinberg dither → 4bpp frame buffer ─────────────────────────── */
 
 static int find_closest_color(int r, int g, int b)
@@ -316,7 +421,11 @@ esp_err_t image_decode_jpeg(const uint8_t *jpeg_buf, size_t jpeg_size,
             return ret;
     }
 
-    /* Step 3: Floyd-Steinberg dither → 4bpp frame buffer.
+    /* Step 3: Compress dynamic range for e-paper's limited tonal range. */
+    ESP_LOGI(TAG, "Compressing dynamic range");
+    compress_dynamic_range(rgb_scaled, EPD_WIDTH, EPD_HEIGHT);
+
+    /* Step 4: Floyd-Steinberg dither → 4bpp frame buffer.
      * dither_to_framebuf frees rgb_scaled. */
     ret = dither_to_framebuf(rgb_scaled, frame_buf);
     if (ret != ESP_OK)
