@@ -35,4 +35,4 @@
 
 ## Build / Tooling
 
-- [ ] FATFS LFN — clean build needed to regenerate sdkconfig with LFN settings (currently showing 8.3 filenames)
+- [x] FATFS LFN — fixed by deleting build/ and sdkconfig to regenerate from sdkconfig.defaults
