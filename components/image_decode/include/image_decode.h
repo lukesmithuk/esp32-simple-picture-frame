@@ -12,8 +12,9 @@ extern "C" {
  * @brief Decode a JPEG and render it into a 4bpp EPD frame buffer.
  *
  * Pipeline: JPEG decode (TJpgDec via ROM) → nearest-neighbor scale to
- * 800×480 (cover mode, centre-crop) → Floyd-Steinberg dither to the
- * 6-colour Spectra 6 palette → 4bpp packed frame buffer.
+ * 800×480 (cover mode, centre-crop) → compress dynamic range (CDR) →
+ * Floyd-Steinberg dither to the 6-colour Spectra 6 palette → 4bpp
+ * packed frame buffer.
  *
  * @param jpeg_buf   Raw JPEG bytes (typically PSRAM, from image_loader_load).
  * @param jpeg_size  Size of jpeg_buf in bytes.

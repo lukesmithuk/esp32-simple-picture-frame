@@ -1,5 +1,6 @@
 #include "image_decode.h"
 
+#include <limits.h>
 #include <math.h>
 #include <string.h>
 
@@ -199,7 +200,9 @@ static esp_err_t scale_to_display(uint8_t *rgb_raw, int raw_w, int raw_h,
 
 /* ── Compress dynamic range (CDR) ────────────────────────────────────────── */
 
-/* sRGB ↔ linear conversion LUTs.  Initialised once on first use. */
+/* sRGB ↔ linear conversion LUTs.  Initialised once on first use.
+ * ~5 KB in BSS (internal RAM) — persists across calls but re-inited
+ * after deep sleep reboot since statics are zero-initialised. */
 static float    srgb_to_linear_lut[256];
 static uint8_t  linear_to_srgb_lut[LINEAR_LUT_SIZE];
 static bool     luts_initialised = false;
@@ -284,6 +287,8 @@ static void compress_dynamic_range(uint8_t *rgb, int width, int height)
             lb = black_Y;
         }
 
+        /* Scaled channels may exceed 1.0 for saturated colours in bright
+         * regions.  linear_to_srgb() clamps to [0, 255] so this is safe. */
         if (scale != 0.0f) {
             lr *= scale;
             lg *= scale;
