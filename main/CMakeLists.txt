@@ -9,4 +9,9 @@ idf_component_register(
     REQUIRES
         board
         epd
+        sdcard
+        image_picker
+        image_loader
+        epd_text
+        errlog
 )
