@@ -141,7 +141,7 @@ void app_main(void)
 
     /* TODO Phase 7: JPEG decode + scale + dither img_buf → frame_buf.
      * For now display a white placeholder to prove the pipeline works. */
-    ESP_LOGI(TAG, "Loaded %u bytes from %s (decode not yet implemented)",
+    ESP_LOGI(TAG, "Loaded %zu bytes from %s (decode not yet implemented)",
              img_size, img_path);
     epd_fill_color(frame_buf, EPD_COLOR_WHITE);
 

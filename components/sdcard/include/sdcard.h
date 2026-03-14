@@ -23,6 +23,7 @@ esp_err_t sdcard_mount(void);
  * @brief Unmount the SD card.
  *
  * Idempotent — safe to call if not mounted.
+ * Returns void because unmount errors are non-fatal (logged but not propagated).
  */
 void sdcard_unmount(void);
 
