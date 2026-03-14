@@ -10,7 +10,7 @@
 #include "image_picker.h"
 #include "image_loader.h"
 #include "epd_text.h"
-#include "errlog.h"
+#include "applog.h"
 #include "image_decode.h"
 
 #ifdef CONFIG_TEST_MODE
@@ -20,8 +20,8 @@
 static const char *TAG = "main";
 static const char *image_exts[] = {"jpg", "jpeg", NULL};
 
-#define IMAGE_DIR  SDCARD_MOUNT_POINT "/images"
-#define ERROR_LOG  SDCARD_MOUNT_POINT "/error.log"
+#define IMAGE_DIR   SDCARD_MOUNT_POINT "/images"
+#define SYSTEM_LOG  SDCARD_MOUNT_POINT "/system.log"
 
 #ifndef CONFIG_DISABLE_DEEP_SLEEP
 /* Wake interval. TODO: make configurable / load from SD. */
@@ -66,6 +66,8 @@ static void show_error(uint8_t *frame_buf, const char *message)
 
 void app_main(void)
 {
+    applog_init();
+
     esp_sleep_wakeup_cause_t wakeup = esp_sleep_get_wakeup_cause();
     if (wakeup == ESP_SLEEP_WAKEUP_EXT0) {
         ESP_LOGI(TAG, "Woke from deep sleep (RTC alarm)");
@@ -120,12 +122,14 @@ void app_main(void)
     }
     sd_mounted = true;
 
+    /* Start logging all ESP_LOG output to SD card. */
+    applog_start(SYSTEM_LOG);
+
     /* Pick a random image */
     char img_path[IMAGE_PICKER_PATH_MAX];
     ret = image_picker_pick(IMAGE_DIR, image_exts, img_path);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "No images found in " IMAGE_DIR);
-        errlog_write(ERROR_LOG, "No images found in " IMAGE_DIR);
         show_error(frame_buf, "No images found");
         goto unmount;
     }
@@ -135,7 +139,6 @@ void app_main(void)
     ret = image_loader_load(img_path, &img_buf, &img_size);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to load: %s", img_path);
-        errlog_write(ERROR_LOG, "Failed to load image");
         show_error(frame_buf, "Image load error");
         goto unmount;
     }
@@ -145,7 +148,6 @@ void app_main(void)
     ret = image_decode_jpeg(img_buf, img_size, frame_buf);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Decode failed: %s", esp_err_to_name(ret));
-        errlog_write(ERROR_LOG, "JPEG decode failed");
         show_error(frame_buf, "Decode error");
         goto unmount;
     }
@@ -159,6 +161,7 @@ void app_main(void)
 unmount:
     free(img_buf);      /* free(NULL) is a no-op per C99 */
     if (sd_mounted) {
+        applog_stop();
         sdcard_unmount();
     }
 
