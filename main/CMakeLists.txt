@@ -14,5 +14,6 @@ idf_component_register(
         image_loader
         image_decode
         epd_text
-        errlog
+        applog
+        config
 )

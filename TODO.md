@@ -9,6 +9,7 @@
 - [x] Phase 5: RTC alarm + deep sleep wake cycle
 - [x] Phase 6: SD card mount, image picker, loader, error display, error logging
 - [x] Phase 7: JPEG decode → scale → CDR → Floyd-Steinberg dither → display
+- [x] Phase 9: Production loop — log to file, image shuffle, configurable wake, full cycle verified
 
 ## Phase 8 — Image Pipeline Enhancements
 
@@ -21,10 +22,10 @@
 
 ## Phase 9 — Production Loop & Reliability
 
-- [ ] Full cycle verified: alarm wake → image select → decode → dither → display → sleep
-- [ ] Log to file — hook `esp_log_set_vprintf()` to tee all ESP_LOG output to SD card file
-- [ ] Configurable wake interval — load schedule from SD card config file
-- [ ] Image shuffle without repeat — track shown images to avoid repeats
+- [x] Full cycle verified: alarm wake → image select → decode → dither → display → sleep
+- [x] Log to file — applog component: buffer early boot to RAM, tee ESP_LOG to SD card file
+- [x] Configurable wake interval — config component: key=value file from SD card
+- [x] Image shuffle without repeat — history file in image directory, cycle without repeats
 
 ## Phase 10 — Power Optimisation
 

@@ -44,11 +44,12 @@ app_main (main/)
 | `components/board/XPowersLib/` | C++ (vendored) | AXP2101 PMIC register access |
 | `components/epd/` | C | SPI, EPD panel driver (Spectra 6, 6-colour) |
 | `components/sdcard/` | C | 4-bit SDIO mount/unmount |
-| `components/image_picker/` | C | Directory scan + random selection |
+| `components/image_picker/` | C | Directory scan + shuffle without repeat |
 | `components/image_loader/` | C | File → PSRAM buffer (4MB max) |
 | `components/image_decode/` | C | JPEG decode → scale → CDR → dither |
 | `components/epd_text/` | C | 8x8 bitmap font for error messages |
-| `components/errlog/` | C | Timestamped error log to file |
+| `components/applog/` | C | ESP_LOG tee to SD card file + explicit log writes |
+| `components/config/` | C | Key=value config file reader from SD card |
 | `main/` | C | App entry point, integration tests |
 
 ### Test infrastructure
@@ -73,7 +74,7 @@ app_main (main/)
 | 6 | SD card mount + image selection + error display | ✅ Done (2026-03-14) |
 | 7 | JPEG decode + scale + CDR + dither | ✅ Done (2026-03-14) |
 | 8 | Image pipeline enhancements (EXIF, PNG, rotation) | ⬜ Planned |
-| 9 | Production loop & reliability | ⬜ Planned |
+| 9 | Production loop & reliability | ✅ Done (2026-03-14) |
 | 10 | Power optimisation (pmic_sleep, DLDO mapping) | ⬜ Planned |
 
 ---

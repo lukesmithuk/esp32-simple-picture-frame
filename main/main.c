@@ -10,7 +10,8 @@
 #include "image_picker.h"
 #include "image_loader.h"
 #include "epd_text.h"
-#include "errlog.h"
+#include "applog.h"
+#include "config.h"
 #include "image_decode.h"
 
 #ifdef CONFIG_TEST_MODE
@@ -20,15 +21,11 @@
 static const char *TAG = "main";
 static const char *image_exts[] = {"jpg", "jpeg", NULL};
 
-#define IMAGE_DIR  SDCARD_MOUNT_POINT "/images"
-#define ERROR_LOG  SDCARD_MOUNT_POINT "/error.log"
+#define IMAGE_DIR    SDCARD_MOUNT_POINT "/images"
+#define SYSTEM_LOG   SDCARD_MOUNT_POINT "/system.log"
+#define CONFIG_PATH  SDCARD_MOUNT_POINT "/config.txt"
 
 #ifndef CONFIG_DISABLE_DEEP_SLEEP
-/* Wake interval. TODO: make configurable / load from SD. */
-#define WAKE_INTERVAL_HOURS   1
-#define WAKE_INTERVAL_MINUTES 0
-#define WAKE_INTERVAL_SECONDS 0
-
 static void set_next_alarm(void)
 {
     if (!board_rtc_is_available())
@@ -40,14 +37,15 @@ static void set_next_alarm(void)
         return;
     }
 
-    time_t next = now + WAKE_INTERVAL_HOURS * 3600
-                      + WAKE_INTERVAL_MINUTES * 60
-                      + WAKE_INTERVAL_SECONDS;
+    int hours   = config_get_int("wake_interval_hours", 1);
+    int minutes = config_get_int("wake_interval_minutes", 0);
+    int seconds = config_get_int("wake_interval_seconds", 0);
+    ESP_LOGI(TAG, "Wake interval: %dh %dm %ds", hours, minutes, seconds);
+
+    time_t next = now + hours * 3600 + minutes * 60 + seconds;
     struct tm t;
-    localtime_r(&now, &t);
-    ESP_LOGD(TAG, "NOW : %02d:%02d:%02d", t.tm_hour, t.tm_min, t.tm_sec);
     localtime_r(&next, &t);
-    ESP_LOGD(TAG, "NEXT: %02d:%02d:%02d", t.tm_hour, t.tm_min, t.tm_sec);
+    ESP_LOGI(TAG, "Next alarm: %02d:%02d:%02d", t.tm_hour, t.tm_min, t.tm_sec);
 
     esp_err_t ret = board_rtc_set_alarm(t.tm_hour, t.tm_min, t.tm_sec);
     if (ret != ESP_OK) {
@@ -66,6 +64,8 @@ static void show_error(uint8_t *frame_buf, const char *message)
 
 void app_main(void)
 {
+    applog_init();
+
     esp_sleep_wakeup_cause_t wakeup = esp_sleep_get_wakeup_cause();
     if (wakeup == ESP_SLEEP_WAKEUP_EXT0) {
         ESP_LOGI(TAG, "Woke from deep sleep (RTC alarm)");
@@ -120,12 +120,17 @@ void app_main(void)
     }
     sd_mounted = true;
 
+    /* Start logging all ESP_LOG output to SD card. */
+    applog_start(SYSTEM_LOG);
+
+    /* Load config (wake interval, etc.). Missing file uses defaults. */
+    config_load(CONFIG_PATH);
+
     /* Pick a random image */
     char img_path[IMAGE_PICKER_PATH_MAX];
     ret = image_picker_pick(IMAGE_DIR, image_exts, img_path);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "No images found in " IMAGE_DIR);
-        errlog_write(ERROR_LOG, "No images found in " IMAGE_DIR);
         show_error(frame_buf, "No images found");
         goto unmount;
     }
@@ -135,7 +140,6 @@ void app_main(void)
     ret = image_loader_load(img_path, &img_buf, &img_size);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to load: %s", img_path);
-        errlog_write(ERROR_LOG, "Failed to load image");
         show_error(frame_buf, "Image load error");
         goto unmount;
     }
@@ -145,7 +149,6 @@ void app_main(void)
     ret = image_decode_jpeg(img_buf, img_size, frame_buf);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Decode failed: %s", esp_err_to_name(ret));
-        errlog_write(ERROR_LOG, "JPEG decode failed");
         show_error(frame_buf, "Decode error");
         goto unmount;
     }
@@ -159,6 +162,7 @@ void app_main(void)
 unmount:
     free(img_buf);      /* free(NULL) is a no-op per C99 */
     if (sd_mounted) {
+        applog_stop();
         sdcard_unmount();
     }
 
@@ -173,7 +177,7 @@ sleep:
         vTaskDelay(pdMS_TO_TICKS(5000));
     }
 #else
-    set_next_alarm();
+    set_next_alarm();   /* reads config values from RAM — safe after SD unmount */
     board_enter_deep_sleep();
     /* Does not return */
 #endif

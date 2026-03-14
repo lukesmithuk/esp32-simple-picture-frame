@@ -1,4 +1,4 @@
 idf_component_register(
-    SRCS "errlog.c"
+    SRCS "config.c"
     INCLUDE_DIRS "include"
 )

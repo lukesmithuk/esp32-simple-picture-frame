@@ -10,10 +10,12 @@ extern "C" {
 #define IMAGE_PICKER_PATH_MAX 256
 
 /**
- * @brief Scan a directory for image files and pick one at random.
+ * @brief Scan a directory for image files and pick one not recently shown.
  *
  * Enumerates files whose extension (case-insensitive) matches any entry
- * in the null-terminated @p exts array. Selects one uniformly at random.
+ * in the null-terminated @p exts array. Maintains a history file in the
+ * directory to avoid repeats — cycles through all images before any is
+ * shown again. Handles added/removed files between calls.
  *
  * @param dir_path  Absolute directory path, e.g. "/sdcard/images".
  * @param exts      Null-terminated array of extensions without dot,
