@@ -12,6 +12,7 @@ idf_component_register(
         sdcard
         image_picker
         image_loader
+        image_decode
         epd_text
         errlog
 )

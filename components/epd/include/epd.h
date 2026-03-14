@@ -12,7 +12,8 @@ extern "C" {
 #define EPD_BUF_SIZE (EPD_WIDTH / 2 * EPD_HEIGHT)   /* 192 000 bytes, 4bpp packed */
 
 /**
- * Palette colour indices (high nibble = even pixel, low nibble = odd pixel).
+ * Palette colour indices for Spectra 6 (E6) panel.
+ * High nibble = even pixel, low nibble = odd pixel.
  */
 typedef enum {
     EPD_COLOR_BLACK  = 0,
@@ -21,7 +22,6 @@ typedef enum {
     EPD_COLOR_BLUE   = 3,
     EPD_COLOR_RED    = 4,
     EPD_COLOR_YELLOW = 5,
-    EPD_COLOR_ORANGE = 6,
 } epd_color_t;
 
 /**

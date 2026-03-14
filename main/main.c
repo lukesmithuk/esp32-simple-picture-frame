@@ -11,6 +11,7 @@
 #include "image_loader.h"
 #include "epd_text.h"
 #include "errlog.h"
+#include "image_decode.h"
 
 #ifdef CONFIG_TEST_MODE
 #include "test_main.h"
@@ -139,11 +140,15 @@ void app_main(void)
         goto unmount;
     }
 
-    /* TODO Phase 7: JPEG decode + scale + dither img_buf → frame_buf.
-     * For now display a white placeholder to prove the pipeline works. */
-    ESP_LOGI(TAG, "Loaded %zu bytes from %s (decode not yet implemented)",
-             img_size, img_path);
-    epd_fill_color(frame_buf, EPD_COLOR_WHITE);
+    /* JPEG decode → scale → dither into frame buffer */
+    ESP_LOGI(TAG, "Decoding %zu bytes from %s", img_size, img_path);
+    ret = image_decode_jpeg(img_buf, img_size, frame_buf);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Decode failed: %s", esp_err_to_name(ret));
+        errlog_write(ERROR_LOG, "JPEG decode failed");
+        show_error(frame_buf, "Decode error");
+        goto unmount;
+    }
 
     ESP_LOGI(TAG, "Displaying frame");
     ret = epd_display(frame_buf);

@@ -49,12 +49,25 @@ python3 monitor.py --timeout 30
 idf.py menuconfig
 ```
 
+## Component Map
+
+| Component | Purpose | Key dependencies |
+|-----------|---------|-----------------|
+| `board` | I2C bus, AXP2101 PMIC, PCF85063 RTC | `esp_hw_support`, `esp_driver_i2c` |
+| `epd` | SPI EPD driver (800x480, 7-colour, 4bpp) | `esp_driver_spi` |
+| `sdcard` | 4-bit SDIO mount/unmount at `/sdcard` | `fatfs`, `sdmmc`, `esp_driver_sdmmc` |
+| `image_picker` | Directory scan + random selection by extension | (none) |
+| `image_loader` | File → PSRAM buffer (4MB max) | `esp_hw_support` |
+| `epd_text` | 8x8 bitmap font renderer for 4bpp frame buffer | `epd` (constants only) |
+| `errlog` | Timestamped error log append to file | (none) |
+
 ## IDF v5 Component Names
 
 Use these in `CMakeLists.txt` `REQUIRES`:
 - `driver` (covers I2C, SPI, GPIO, etc.)
 - `esp_driver_gpio`, `esp_driver_i2c`, `esp_driver_spi` (explicit sub-drivers)
-- `esp_hw_support` (contains `esp_sleep.h`)
+- `esp_hw_support` (contains `esp_sleep.h`, `esp_heap_caps.h`)
+- `fatfs`, `sdmmc`, `esp_driver_sdmmc` (SD card)
 
 Do NOT add `esp_log` or `freertos` to `REQUIRES` — they are auto-linked in IDF v5.5.
 

@@ -60,10 +60,9 @@ static void test_epd_color_bars(void)
     static const epd_color_t colors[] = {
         EPD_COLOR_BLACK, EPD_COLOR_WHITE, EPD_COLOR_GREEN,
         EPD_COLOR_BLUE,  EPD_COLOR_RED,   EPD_COLOR_YELLOW,
-        EPD_COLOR_ORANGE,
     };
     static const char *names[] = {
-        "black", "white", "green", "blue", "red", "yellow", "orange",
+        "black", "white", "green", "blue", "red", "yellow",
     };
     const int num_colors = sizeof(colors) / sizeof(colors[0]);
 
