@@ -96,6 +96,12 @@ esp_err_t axp2101_cmd_init(void)
         ESP_LOGW(TAG, "VOFF = 2.9V (battery UVLO)");
     }
 
+    /* Enable battery voltage ADC and battery detection. */
+    axp2101.enableBattVoltageMeasure();
+    axp2101.enableBattDetection();
+    axp2101.enableSystemVoltageMeasure();
+    axp2101.enableVbusVoltageMeasure();
+
     return ESP_OK;
 }
 

@@ -273,6 +273,35 @@ esp_err_t board_sleep(void)
     return ESP_OK;
 }
 
+/* ── Battery ─────────────────────────────────────────────────────────── */
+
+bool board_battery_is_connected(void)
+{
+    return axp2101_is_battery_connected();
+}
+
+int board_battery_percent(void)
+{
+    return axp2101_get_battery_percent();
+}
+
+int board_battery_voltage_mv(void)
+{
+    return axp2101_get_battery_voltage();
+}
+
+bool board_battery_is_charging(void)
+{
+    return axp2101_is_charging();
+}
+
+bool board_usb_is_connected(void)
+{
+    return axp2101_is_usb_connected();
+}
+
+/* ── RTC ─────────────────────────────────────────────────────────────── */
+
 bool board_rtc_is_available(void)
 {
     return pcf85063_is_available();

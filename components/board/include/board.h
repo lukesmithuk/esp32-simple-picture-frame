@@ -42,6 +42,23 @@ esp_err_t board_epd_power(bool on);
  */
 esp_err_t board_sleep(void);
 
+/* ── Battery ─────────────────────────────────────────────────────────── */
+
+/** @brief Returns true if a battery is connected. */
+bool board_battery_is_connected(void);
+
+/** @brief Battery level 0–100%, or -1 if no battery connected. */
+int board_battery_percent(void);
+
+/** @brief Battery voltage in millivolts. */
+int board_battery_voltage_mv(void);
+
+/** @brief Returns true if the battery is currently charging via USB. */
+bool board_battery_is_charging(void);
+
+/** @brief Returns true if USB VBUS is present. */
+bool board_usb_is_connected(void);
+
 /* ── RTC ──────────────────────────────────────────────────────────────── */
 
 /** @brief Returns true if the PCF85063 was found and initialised. */

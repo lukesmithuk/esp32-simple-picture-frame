@@ -87,6 +87,17 @@ void app_main(void)
         }
     }
 
+    /* Log battery / power status */
+    int batt_mv = board_battery_voltage_mv();
+    if (board_battery_is_connected() && batt_mv > 1000) {
+        ESP_LOGI(TAG, "Battery: %d%% (%d mV)%s",
+                 board_battery_percent(), batt_mv,
+                 board_battery_is_charging() ? " [charging]" : "");
+    } else {
+        ESP_LOGI(TAG, "No battery (USB: %s)",
+                 board_usb_is_connected() ? "yes" : "no");
+    }
+
     /* Clear alarm flag from previous wake (or stale flag from cold boot) */
     board_rtc_clear_alarm_flag();
 
