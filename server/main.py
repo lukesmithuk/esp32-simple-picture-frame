@@ -109,6 +109,7 @@ def generate_thumbnail(image_path: Path, thumb_path: Path, size=(200, 200)):
 
 @app.post("/api/upload")
 async def upload_images(files: list[UploadFile] = File(...)):
+    uploaded = 0
     for file in files:
         data = await file.read()
         if len(data) == 0 or not file.filename:
@@ -128,8 +129,9 @@ async def upload_images(files: list[UploadFile] = File(...)):
         dest.write_bytes(data)
         await db.add_image(dest.name)
         generate_thumbnail(dest, config.THUMBS_DIR / dest.name)
+        uploaded += 1
 
-    return RedirectResponse(url="/", status_code=303)
+    return RedirectResponse(url=f"/?uploaded={uploaded}", status_code=303)
 
 
 @app.delete("/api/images/{image_id}")
@@ -164,13 +166,27 @@ async def serve_thumb(filename: str):
 
 
 @app.get("/")
-async def index(request: Request):
+async def index(request: Request, uploaded: int | None = None):
     images = await db.list_images()
     frames = await db.list_frames()
     return templates.TemplateResponse("index.html", {
         "request": request,
         "images": images,
         "frames": frames,
+        "uploaded": uploaded,
+    })
+
+
+@app.get("/logs/{frame_id}")
+async def frame_logs(request: Request, frame_id: int):
+    frame = await db.get_frame(frame_id)
+    if not frame:
+        raise HTTPException(status_code=404, detail="Frame not found")
+    logs = await db.get_logs(frame_id)
+    return templates.TemplateResponse("logs.html", {
+        "request": request,
+        "frame": frame,
+        "logs": logs,
     })
 
 

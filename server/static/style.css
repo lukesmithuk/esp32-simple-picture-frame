@@ -10,3 +10,7 @@ th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; }
 .upload { margin-bottom: 2rem; }
 input[type="file"] { margin-right: 0.5rem; }
 button[type="submit"] { background: #069; color: white; border: none; padding: 0.5rem 1rem; cursor: pointer; border-radius: 3px; }
+.message { background: #dfd; border: 1px solid #aca; padding: 0.5rem 1rem; border-radius: 4px; margin-bottom: 1rem; }
+.logs { background: #1a1a1a; color: #eee; padding: 1rem; border-radius: 4px; overflow-x: auto; font-size: 0.8rem; max-height: 600px; overflow-y: auto; }
+h1 a { color: inherit; text-decoration: none; }
+h1 a:hover { text-decoration: underline; }

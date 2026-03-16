@@ -9,6 +9,10 @@
 <body>
     <h1>Photo Frame Server</h1>
 
+    {% if uploaded %}
+    <div class="message">Uploaded {{ uploaded }} image{{ "s" if uploaded != 1 else "" }}.</div>
+    {% endif %}
+
     <section class="upload">
         <h2>Upload Images</h2>
         <form action="/api/upload" method="post" enctype="multipart/form-data"
@@ -38,7 +42,7 @@
         <table>
             <tr>
                 <th>MAC</th><th>Last Seen</th><th>Battery</th>
-                <th>Charging</th><th>USB</th><th>Firmware</th>
+                <th>Charging</th><th>USB</th><th>Firmware</th><th>Logs</th>
             </tr>
             {% for f in frames %}
             <tr>
@@ -48,6 +52,7 @@
                 <td>{{ "Yes" if f.charging else "No" }}</td>
                 <td>{{ "Yes" if f.usb_connected else "No" }}</td>
                 <td>{{ f.firmware_version or "&mdash;" }}</td>
+                <td><a href="/logs/{{ f.id }}">View</a></td>
             </tr>
             {% endfor %}
         </table>
