@@ -111,10 +111,12 @@ def generate_thumbnail(image_path: Path, thumb_path: Path, size=(200, 200)):
 async def upload_images(files: list[UploadFile] = File(...)):
     for file in files:
         data = await file.read()
+        if len(data) == 0 or not file.filename:
+            continue  # Skip empty / no file selected
         if len(data) > config.MAX_IMAGE_SIZE:
             continue  # Skip oversized files
 
-        filename = file.filename or "unnamed.jpg"
+        filename = file.filename
         dest = config.IMAGES_DIR / filename
         counter = 1
         while dest.exists():
