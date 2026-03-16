@@ -42,6 +42,9 @@ EnvironmentFile=$SCRIPT_DIR/server.env
 ExecStart=$SCRIPT_DIR/venv/bin/python $SCRIPT_DIR/main.py
 Restart=on-failure
 RestartSec=5
+TimeoutStopSec=5
+KillMode=mixed
+KillSignal=SIGINT
 
 [Install]
 WantedBy=multi-user.target
