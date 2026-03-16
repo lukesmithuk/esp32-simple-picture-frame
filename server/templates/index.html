@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photo Frame Server</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <h1>Photo Frame Server</h1>
+
+    {% if uploaded %}
+    <div class="message">Uploaded {{ uploaded }} image{{ "s" if uploaded != 1 else "" }}.</div>
+    {% endif %}
+    {% if saved %}
+    <div class="message">Settings saved.</div>
+    {% endif %}
+
+    <section class="upload">
+        <h2>Upload Images</h2>
+        <form action="/api/upload" method="post" enctype="multipart/form-data"
+              onsubmit="if (!this.files.files.length) { alert('Please select one or more images first.'); return false; }">
+            <input type="file" name="files" multiple accept="image/jpeg,image/png,image/webp">
+            <button type="submit">Upload</button>
+        </form>
+    </section>
+
+    <section class="gallery">
+        <h2>Gallery ({{ images | length }} images)</h2>
+        <div class="grid">
+            {% for img in images %}
+            <div class="card">
+                <img src="/thumbs/{{ img.filename }}" alt="{{ img.filename }}"
+                     onerror="this.src='/static/placeholder.svg'">
+                <p>{{ img.filename }}</p>
+                <button onclick="deleteImage({{ img.id }}, '{{ img.filename }}')">Delete</button>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+
+    <section class="settings">
+        <h2>Settings</h2>
+        <form action="/settings" method="post">
+            <span class="wake-label">Wake interval:</span>
+            <input type="number" name="wake_hours" value="{{ wake.hours }}" min="0" max="24" class="wake-num"> h &nbsp;
+            <input type="number" name="wake_minutes" value="{{ wake.minutes }}" min="0" max="59" class="wake-num"> m &nbsp;
+            <input type="number" name="wake_seconds" value="{{ wake.seconds }}" min="0" max="59" class="wake-num"> s &nbsp;
+            <button type="submit">Save</button>
+        </form>
+    </section>
+
+    <section class="frames">
+        <h2>Frames</h2>
+        {% if frames %}
+        <table>
+            <tr>
+                <th>MAC</th><th>Last Seen</th><th>Battery</th>
+                <th>Charging</th><th>USB</th><th>Firmware</th><th>Logs</th>
+            </tr>
+            {% for f in frames %}
+            <tr>
+                <td>{{ f.mac_address }}</td>
+                <td>{{ f.last_seen or "never" }}</td>
+                <td>{% if f.battery_percent is not none %}{{ f.battery_percent }}% ({{ f.battery_mv }}mV){% else %}&mdash;{% endif %}</td>
+                <td>{{ "Yes" if f.charging else "No" }}</td>
+                <td>{{ "Yes" if f.usb_connected else "No" }}</td>
+                <td>{{ f.firmware_version or "&mdash;" }}</td>
+                <td><a href="/logs/{{ f.id }}">View</a></td>
+            </tr>
+            {% endfor %}
+        </table>
+        {% else %}
+        <p>No frames have connected yet.</p>
+        {% endif %}
+    </section>
+
+    <script>
+        async function deleteImage(id, name) {
+            if (!confirm("Delete " + name + "?")) return;
+            const r = await fetch("/api/images/" + id, { method: "DELETE" });
+            if (r.ok) location.reload();
+            else alert("Delete failed");
+        }
+    </script>
+</body>
+</html>

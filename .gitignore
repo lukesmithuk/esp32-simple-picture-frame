@@ -63,3 +63,13 @@ dependencies.lock
 
 # IDE
 .vscode/
+
+# Server
+server/server.env
+server/venv/
+server/images/
+server/thumbs/
+server/photoframe.db
+server/__pycache__/
+server/tests/__pycache__/
+

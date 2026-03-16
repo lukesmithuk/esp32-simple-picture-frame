@@ -18,15 +18,19 @@ void applog_init(void);
 /**
  * @brief Start capturing all ESP_LOG output to a file.
  *
+ * If the log file exceeds max_size_kb, it is rotated: renamed to
+ * <path>.1 (overwriting any previous backup) and a fresh file started.
+ *
  * Opens the file in append mode, flushes any buffered early-boot
  * messages, and switches to writing all ESP_LOG* output to both
  * serial and the file.  Call applog_stop() before unmounting the
  * SD card.
  *
- * @param log_path  Absolute path, e.g. "/sdcard/system.log".
+ * @param log_path     Absolute path, e.g. "/sdcard/system.log".
+ * @param max_size_kb  Maximum log file size before rotation (0 = no limit).
  * @return ESP_OK on success, ESP_FAIL if the file cannot be opened.
  */
-esp_err_t applog_start(const char *log_path);
+esp_err_t applog_start(const char *log_path, int max_size_kb);
 
 /**
  * @brief Stop capturing ESP_LOG output to file.
