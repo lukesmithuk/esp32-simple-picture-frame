@@ -1,0 +1,12 @@
+body { font-family: system-ui, sans-serif; max-width: 960px; margin: 0 auto; padding: 1rem; }
+h1 { border-bottom: 2px solid #333; padding-bottom: 0.5rem; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; }
+.card { border: 1px solid #ddd; padding: 0.5rem; border-radius: 4px; text-align: center; }
+.card img { max-width: 100%; height: 150px; object-fit: cover; }
+.card p { font-size: 0.8rem; word-break: break-all; margin: 0.25rem 0; }
+.card button { background: #c00; color: white; border: none; padding: 0.25rem 0.5rem; cursor: pointer; border-radius: 3px; }
+table { width: 100%; border-collapse: collapse; }
+th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; }
+.upload { margin-bottom: 2rem; }
+input[type="file"] { margin-right: 0.5rem; }
+button[type="submit"] { background: #069; color: white; border: none; padding: 0.5rem 1rem; cursor: pointer; border-radius: 3px; }

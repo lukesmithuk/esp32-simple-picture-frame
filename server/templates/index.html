@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photo Frame Server</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <h1>Photo Frame Server</h1>
+
+    <section class="upload">
+        <h2>Upload Images</h2>
+        <form action="/api/upload" method="post" enctype="multipart/form-data">
+            <input type="file" name="files" multiple accept="image/jpeg,image/png">
+            <button type="submit">Upload</button>
+        </form>
+    </section>
+
+    <section class="gallery">
+        <h2>Gallery ({{ images | length }} images)</h2>
+        <div class="grid">
+            {% for img in images %}
+            <div class="card">
+                <img src="/thumbs/{{ img.filename }}" alt="{{ img.filename }}"
+                     onerror="this.src='/static/placeholder.svg'">
+                <p>{{ img.filename }}</p>
+                <button onclick="deleteImage({{ img.id }}, '{{ img.filename }}')">Delete</button>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+
+    <section class="frames">
+        <h2>Frames</h2>
+        {% if frames %}
+        <table>
+            <tr>
+                <th>MAC</th><th>Last Seen</th><th>Battery</th>
+                <th>Charging</th><th>USB</th><th>Firmware</th>
+            </tr>
+            {% for f in frames %}
+            <tr>
+                <td>{{ f.mac_address }}</td>
+                <td>{{ f.last_seen or "never" }}</td>
+                <td>{% if f.battery_percent is not none %}{{ f.battery_percent }}% ({{ f.battery_mv }}mV){% else %}&mdash;{% endif %}</td>
+                <td>{{ "Yes" if f.charging else "No" }}</td>
+                <td>{{ "Yes" if f.usb_connected else "No" }}</td>
+                <td>{{ f.firmware_version or "&mdash;" }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+        {% else %}
+        <p>No frames have connected yet.</p>
+        {% endif %}
+    </section>
+
+    <script>
+        async function deleteImage(id, name) {
+            if (!confirm("Delete " + name + "?")) return;
+            const r = await fetch("/api/images/" + id, { method: "DELETE" });
+            if (r.ok) location.reload();
+            else alert("Delete failed");
+        }
+    </script>
+</body>
+</html>
