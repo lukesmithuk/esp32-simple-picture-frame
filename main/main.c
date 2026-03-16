@@ -155,7 +155,10 @@ static esp_err_t try_sd_fetch(uint8_t **img_buf, size_t *img_size)
         return ret;
     }
 
-    return image_loader_load(img_path, img_buf, img_size);
+    ret = image_loader_load(img_path, img_buf, img_size);
+    if (ret == ESP_OK)
+        ESP_LOGI(TAG, "Loaded %zu bytes from SD: %s", *img_size, img_path);
+    return ret;
 }
 
 /* ── Main ────────────────────────────────────────────────────────────────── */

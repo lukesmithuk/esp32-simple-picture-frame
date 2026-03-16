@@ -7,6 +7,7 @@ idf_component_register(
         esp_netif
         esp_hw_support
         esp_event
+        nvs_flash
         board
         json
 )

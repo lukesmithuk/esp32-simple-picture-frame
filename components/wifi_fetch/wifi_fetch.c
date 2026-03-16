@@ -8,6 +8,7 @@
 #include "cJSON.h"
 #include "esp_event.h"
 #include "esp_heap_caps.h"
+#include "nvs_flash.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_mac.h"
@@ -97,6 +98,14 @@ esp_err_t wifi_fetch_init(const char *ssid, const char *password)
 {
     get_mac_string();
     ESP_LOGI(TAG, "Frame MAC: %s", s_mac_str);
+
+    /* NVS is required by the WiFi driver for calibration data. */
+    esp_err_t nvs_ret = nvs_flash_init();
+    if (nvs_ret == ESP_ERR_NVS_NO_FREE_PAGES || nvs_ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        nvs_ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(nvs_ret);
 
     s_wifi_event_group = xEventGroupCreate();
 
