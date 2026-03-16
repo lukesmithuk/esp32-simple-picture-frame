@@ -165,11 +165,25 @@ void wifi_fetch_deinit(void)
 
 /* ── Image fetch ─────────────────────────────────────────────────────────── */
 
+static char s_image_name[128];
+
+static esp_err_t image_http_event(esp_http_client_event_t *evt)
+{
+    if (evt->event_id == HTTP_EVENT_ON_HEADER) {
+        if (strcasecmp(evt->header_key, "X-Image-Name") == 0) {
+            strncpy(s_image_name, evt->header_value, sizeof(s_image_name) - 1);
+            s_image_name[sizeof(s_image_name) - 1] = '\0';
+        }
+    }
+    return ESP_OK;
+}
+
 esp_err_t wifi_fetch_image(const char *server_url, const char *api_key,
                            uint8_t **out_buf, size_t *out_size)
 {
     *out_buf = NULL;
     *out_size = 0;
+    s_image_name[0] = '\0';
 
     char url[256];
     build_url(url, sizeof(url), server_url, "/api/next");
@@ -177,6 +191,7 @@ esp_err_t wifi_fetch_image(const char *server_url, const char *api_key,
     esp_http_client_config_t config = {
         .url = url,
         .timeout_ms = 30000,
+        .event_handler = image_http_event,
     };
     esp_http_client_handle_t client = esp_http_client_init(&config);
 
@@ -242,7 +257,8 @@ esp_err_t wifi_fetch_image(const char *server_url, const char *api_key,
 
     *out_buf = buf;
     *out_size = total_read;
-    ESP_LOGI(TAG, "Downloaded %d bytes from server", total_read);
+    ESP_LOGI(TAG, "Downloaded %d bytes from server: %s",
+             total_read, s_image_name[0] ? s_image_name : "unknown");
     return ESP_OK;
 }
 
