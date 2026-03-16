@@ -41,12 +41,23 @@
 
     <section class="settings">
         <h2>Settings</h2>
-        <form action="/settings" method="post">
-            <label>Wake interval:</label>
-            <input type="number" name="wake_hours" value="{{ wake.hours }}" min="0" max="24" style="width:3em"> h
-            <input type="number" name="wake_minutes" value="{{ wake.minutes }}" min="0" max="59" style="width:3em"> m
-            <input type="number" name="wake_seconds" value="{{ wake.seconds }}" min="0" max="59" style="width:3em"> s
-            <button type="submit">Save</button>
+        <form action="/settings" method="post" class="wake-form">
+            <label>Wake interval</label>
+            <div class="wake-inputs">
+                <div class="wake-field">
+                    <input type="number" name="wake_hours" value="{{ wake.hours }}" min="0" max="24">
+                    <span>hours</span>
+                </div>
+                <div class="wake-field">
+                    <input type="number" name="wake_minutes" value="{{ wake.minutes }}" min="0" max="59">
+                    <span>min</span>
+                </div>
+                <div class="wake-field">
+                    <input type="number" name="wake_seconds" value="{{ wake.seconds }}" min="0" max="59">
+                    <span>sec</span>
+                </div>
+                <button type="submit">Save</button>
+            </div>
         </form>
     </section>
 
