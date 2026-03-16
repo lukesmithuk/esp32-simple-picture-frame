@@ -1,5 +1,6 @@
 #include <time.h>
 
+#include "esp_app_desc.h"
 #include "esp_log.h"
 #include "esp_sleep.h"
 #include "freertos/FreeRTOS.h"
@@ -13,6 +14,7 @@
 #include "applog.h"
 #include "config.h"
 #include "image_decode.h"
+#include "wifi_fetch.h"
 
 #ifdef CONFIG_TEST_MODE
 #include "test_main.h"
@@ -21,9 +23,12 @@
 static const char *TAG = "main";
 static const char *image_exts[] = {"jpg", "jpeg", NULL};
 
-#define IMAGE_DIR    SDCARD_MOUNT_POINT "/images"
-#define SYSTEM_LOG   SDCARD_MOUNT_POINT "/system.log"
-#define CONFIG_PATH  SDCARD_MOUNT_POINT "/config.txt"
+#define IMAGE_DIR       SDCARD_MOUNT_POINT "/images"
+#define SYSTEM_LOG      SDCARD_MOUNT_POINT "/system.log"
+#define CONFIG_PATH     SDCARD_MOUNT_POINT "/config.txt"
+#define LOG_OFFSET_PATH SDCARD_MOUNT_POINT "/.log_offset"
+
+/* ── Helpers ─────────────────────────────────────────────────────────────── */
 
 #ifndef CONFIG_DISABLE_DEEP_SLEEP
 static void set_next_alarm(void)
@@ -62,6 +67,99 @@ static void show_error(uint8_t *frame_buf, const char *message)
     epd_display(frame_buf);
 }
 
+static void log_boot_info(void)
+{
+    if (board_rtc_is_available()) {
+        time_t now;
+        if (board_rtc_get_time(&now) == ESP_OK) {
+            struct tm t;
+            localtime_r(&now, &t);
+            ESP_LOGI(TAG, "RTC time: %04d-%02d-%02d %02d:%02d:%02d",
+                     t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
+                     t.tm_hour, t.tm_min, t.tm_sec);
+        }
+    }
+
+    int batt_mv = board_battery_voltage_mv();
+    if (board_battery_is_connected() && batt_mv > 1000) {
+        ESP_LOGI(TAG, "Battery: %d%% (%d mV)%s",
+                 board_battery_percent(), batt_mv,
+                 board_battery_is_charging() ? " [charging]" : "");
+    } else {
+        ESP_LOGI(TAG, "No battery (USB: %s)",
+                 board_usb_is_connected() ? "yes" : "no");
+    }
+}
+
+/* ── WiFi image fetch ────────────────────────────────────────────────────── */
+
+/**
+ * Try to fetch an image from the server over WiFi.
+ * Also uploads logs and pushes status.
+ * Returns ESP_OK with img_buf/img_size set on success.
+ */
+static esp_err_t try_wifi_fetch(uint8_t **img_buf, size_t *img_size)
+{
+    const char *wifi_ssid = config_get_str("wifi_ssid", NULL);
+    if (!wifi_ssid)
+        return ESP_ERR_NOT_SUPPORTED;
+
+    const char *wifi_pass  = config_get_str("wifi_password", "");
+    const char *server_url = config_get_str("server_url", "");
+    const char *api_key    = config_get_str("server_api_key", "");
+
+    esp_err_t ret = wifi_fetch_init(wifi_ssid, wifi_pass);
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "WiFi connect failed");
+        return ret;
+    }
+
+    /* Upload logs BEFORE applog_start (which does rolling). */
+    wifi_fetch_post_logs(server_url, api_key, SYSTEM_LOG, LOG_OFFSET_PATH);
+
+    /* Start log capture (with rolling) now that logs are uploaded. */
+    int log_max_kb = config_get_int("log_max_size_kb", 256);
+    applog_start(SYSTEM_LOG, log_max_kb);
+
+    /* Push frame status. */
+    int batt_mv = board_battery_voltage_mv();
+    wifi_fetch_status_t status = {
+        .battery_connected = board_battery_is_connected() && batt_mv > 1000,
+        .battery_percent   = board_battery_percent(),
+        .battery_mv        = batt_mv,
+        .charging          = board_battery_is_charging(),
+        .usb_connected     = board_usb_is_connected(),
+        .sd_free_kb        = 0,  /* TODO: implement sd_free_kb */
+        .firmware_version  = esp_app_get_description()->version,
+    };
+    wifi_fetch_post_status(server_url, api_key, &status);
+
+    /* Fetch next image. */
+    ret = wifi_fetch_image(server_url, api_key, img_buf, img_size);
+    wifi_fetch_deinit();
+
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "Got %zu bytes from server", *img_size);
+    }
+    return ret;
+}
+
+/* ── SD card image fetch ─────────────────────────────────────────────────── */
+
+static esp_err_t try_sd_fetch(uint8_t **img_buf, size_t *img_size)
+{
+    char img_path[IMAGE_PICKER_PATH_MAX];
+    esp_err_t ret = image_picker_pick(IMAGE_DIR, image_exts, img_path);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "No images found in " IMAGE_DIR);
+        return ret;
+    }
+
+    return image_loader_load(img_path, img_buf, img_size);
+}
+
+/* ── Main ────────────────────────────────────────────────────────────────── */
+
 void app_main(void)
 {
     applog_init();
@@ -74,31 +172,7 @@ void app_main(void)
     }
 
     ESP_ERROR_CHECK(board_init());
-
-    /* Log current RTC time */
-    if (board_rtc_is_available()) {
-        time_t now;
-        if (board_rtc_get_time(&now) == ESP_OK) {
-            struct tm t;
-            localtime_r(&now, &t);
-            ESP_LOGI(TAG, "RTC time: %04d-%02d-%02d %02d:%02d:%02d",
-                     t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
-                     t.tm_hour, t.tm_min, t.tm_sec);
-        }
-    }
-
-    /* Log battery / power status */
-    int batt_mv = board_battery_voltage_mv();
-    if (board_battery_is_connected() && batt_mv > 1000) {
-        ESP_LOGI(TAG, "Battery: %d%% (%d mV)%s",
-                 board_battery_percent(), batt_mv,
-                 board_battery_is_charging() ? " [charging]" : "");
-    } else {
-        ESP_LOGI(TAG, "No battery (USB: %s)",
-                 board_usb_is_connected() ? "yes" : "no");
-    }
-
-    /* Clear alarm flag from previous wake (or stale flag from cold boot) */
+    log_boot_info();
     board_rtc_clear_alarm_flag();
 
 #ifdef CONFIG_TEST_MODE
@@ -110,6 +184,7 @@ void app_main(void)
     /* Production path -------------------------------------------------- */
     uint8_t *frame_buf = NULL;
     uint8_t *img_buf = NULL;
+    size_t img_size = 0;
     bool sd_mounted = false;
     esp_err_t ret;
 
@@ -122,7 +197,7 @@ void app_main(void)
         goto sleep;
     }
 
-    /* Mount SD card */
+    /* Mount SD card (required for config, logs, and fallback images). */
     ret = sdcard_mount();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "SD card mount failed");
@@ -131,33 +206,28 @@ void app_main(void)
     }
     sd_mounted = true;
 
-    /* Load config first — needed for log rolling threshold and WiFi settings. */
+    /* Load config — needed for WiFi, log rolling, wake interval. */
     config_load(CONFIG_PATH);
 
-    /* Start logging all ESP_LOG output to SD card (with rolling). */
-    int log_max_kb = config_get_int("log_max_size_kb", 256);
-    applog_start(SYSTEM_LOG, log_max_kb);
-
-    /* Pick a random image */
-    char img_path[IMAGE_PICKER_PATH_MAX];
-    ret = image_picker_pick(IMAGE_DIR, image_exts, img_path);
+    /* Try WiFi first, fall back to SD card. */
+    ret = try_wifi_fetch(&img_buf, &img_size);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "No images found in " IMAGE_DIR);
-        show_error(frame_buf, "No images found");
-        goto unmount;
+        if (ret != ESP_ERR_NOT_SUPPORTED)
+            ESP_LOGW(TAG, "WiFi fetch failed, trying SD card");
+
+        /* Start log capture if WiFi path didn't (no-WiFi or connect failed). */
+        int log_max_kb = config_get_int("log_max_size_kb", 256);
+        applog_start(SYSTEM_LOG, log_max_kb);
+
+        ret = try_sd_fetch(&img_buf, &img_size);
+        if (ret != ESP_OK) {
+            show_error(frame_buf, "No images found");
+            goto unmount;
+        }
     }
 
-    /* Load image file into PSRAM */
-    size_t img_size = 0;
-    ret = image_loader_load(img_path, &img_buf, &img_size);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to load: %s", img_path);
-        show_error(frame_buf, "Image load error");
-        goto unmount;
-    }
-
-    /* JPEG decode → scale → dither into frame buffer */
-    ESP_LOGI(TAG, "Decoding %zu bytes from %s", img_size, img_path);
+    /* Decode and display. */
+    ESP_LOGI(TAG, "Decoding %zu bytes", img_size);
     ret = image_decode_jpeg(img_buf, img_size, frame_buf);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Decode failed: %s", esp_err_to_name(ret));
@@ -172,14 +242,14 @@ void app_main(void)
     }
 
 unmount:
-    free(img_buf);      /* free(NULL) is a no-op per C99 */
+    free(img_buf);
     if (sd_mounted) {
         applog_stop();
         sdcard_unmount();
     }
 
 sleep:
-    free(frame_buf);    /* free(NULL) is a no-op per C99 */
+    free(frame_buf);
     epd_deinit();
     board_epd_power(false);
 

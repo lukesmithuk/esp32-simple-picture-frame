@@ -17,4 +17,6 @@ idf_component_register(
         applog
         config
         wifi_fetch
+    PRIV_REQUIRES
+        esp_app_format
 )
