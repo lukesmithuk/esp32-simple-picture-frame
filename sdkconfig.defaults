@@ -11,8 +11,9 @@ CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=16384
 # Stack / heap
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 
-# Logging
+# Logging — real timestamps after NTP/RTC sync, milliseconds before
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+CONFIG_LOG_TIMESTAMP_SOURCE_SYSTEM=y
 
 # FAT filesystem — long filename support for SD card
 CONFIG_FATFS_LFN_HEAP=y
