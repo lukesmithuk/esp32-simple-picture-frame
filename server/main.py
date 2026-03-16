@@ -117,16 +117,23 @@ async def upload_images(files: list[UploadFile] = File(...)):
         if len(data) > config.MAX_IMAGE_SIZE:
             continue  # Skip oversized files
 
-        filename = file.filename
+        # Convert to baseline JPEG (handles progressive JPEG, PNG, etc.)
+        try:
+            img = Image.open(io.BytesIO(data))
+            img = img.convert("RGB")  # Strip alpha, ensure RGB
+        except Exception:
+            continue  # Skip unreadable images
+
+        # Force .jpg extension
+        stem = Path(file.filename).stem
+        filename = f"{stem}.jpg"
         dest = config.IMAGES_DIR / filename
         counter = 1
         while dest.exists():
-            stem = Path(filename).stem
-            suffix = Path(filename).suffix
-            dest = config.IMAGES_DIR / f"{stem}_{counter}{suffix}"
+            dest = config.IMAGES_DIR / f"{stem}_{counter}.jpg"
             counter += 1
 
-        dest.write_bytes(data)
+        img.save(dest, "JPEG", quality=95, progressive=False)
         await db.add_image(dest.name)
         generate_thumbnail(dest, config.THUMBS_DIR / dest.name)
         uploaded += 1

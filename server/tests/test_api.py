@@ -1,9 +1,11 @@
+import io
 import shutil
 import sys
 from pathlib import Path
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -13,6 +15,14 @@ from main import app, db
 transport = ASGITransport(app=app)
 
 HEADERS = {"X-API-Key": config.API_KEY, "X-Frame-ID": "AA:BB:CC:DD:EE:FF"}
+
+
+def make_test_jpeg() -> bytes:
+    """Create a minimal valid JPEG in memory."""
+    img = Image.new("RGB", (10, 10), color=(255, 0, 0))
+    buf = io.BytesIO()
+    img.save(buf, "JPEG")
+    return buf.getvalue()
 
 
 @pytest.fixture(autouse=True)
@@ -60,7 +70,7 @@ async def test_api_next_empty_gallery():
 
 @pytest.mark.asyncio
 async def test_api_next_returns_image():
-    test_jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 100
+    test_jpeg = make_test_jpeg()
     (config.IMAGES_DIR / "test.jpg").write_bytes(test_jpeg)
 
     from database import Database
@@ -110,7 +120,7 @@ async def test_api_post_logs():
 
 @pytest.mark.asyncio
 async def test_upload_image():
-    test_jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 100
+    test_jpeg = make_test_jpeg()
     async with AsyncClient(transport=transport, base_url="http://test",
                            follow_redirects=False) as client:
         r = await client.post(
@@ -123,7 +133,7 @@ async def test_upload_image():
 
 @pytest.mark.asyncio
 async def test_delete_image_api():
-    test_jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 100
+    test_jpeg = make_test_jpeg()
     (config.IMAGES_DIR / "del.jpg").write_bytes(test_jpeg)
 
     from database import Database
