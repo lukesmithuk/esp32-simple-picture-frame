@@ -1,5 +1,6 @@
 #include "wifi_fetch.h"
 
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
@@ -166,6 +167,9 @@ void wifi_fetch_deinit(void)
 /* ── Image fetch ─────────────────────────────────────────────────────────── */
 
 static char s_image_name[128];
+static int s_wake_hours   = -1;
+static int s_wake_minutes = -1;
+static int s_wake_seconds = -1;
 
 static esp_err_t image_http_event(esp_http_client_event_t *evt)
 {
@@ -173,6 +177,12 @@ static esp_err_t image_http_event(esp_http_client_event_t *evt)
         if (strcasecmp(evt->header_key, "X-Image-Name") == 0) {
             strncpy(s_image_name, evt->header_value, sizeof(s_image_name) - 1);
             s_image_name[sizeof(s_image_name) - 1] = '\0';
+        } else if (strcasecmp(evt->header_key, "X-Wake-Hours") == 0) {
+            s_wake_hours = atoi(evt->header_value);
+        } else if (strcasecmp(evt->header_key, "X-Wake-Minutes") == 0) {
+            s_wake_minutes = atoi(evt->header_value);
+        } else if (strcasecmp(evt->header_key, "X-Wake-Seconds") == 0) {
+            s_wake_seconds = atoi(evt->header_value);
         }
     }
     return ESP_OK;
@@ -184,6 +194,9 @@ esp_err_t wifi_fetch_image(const char *server_url, const char *api_key,
     *out_buf = NULL;
     *out_size = 0;
     s_image_name[0] = '\0';
+    s_wake_hours = -1;
+    s_wake_minutes = -1;
+    s_wake_seconds = -1;
 
     char url[256];
     build_url(url, sizeof(url), server_url, "/api/next");
@@ -259,7 +272,21 @@ esp_err_t wifi_fetch_image(const char *server_url, const char *api_key,
     *out_size = total_read;
     ESP_LOGI(TAG, "Downloaded %d bytes from server: %s",
              total_read, s_image_name[0] ? s_image_name : "unknown");
+
+    if (s_wake_hours >= 0)
+        ESP_LOGI(TAG, "Server wake interval: %dh %dm %ds",
+                 s_wake_hours, s_wake_minutes, s_wake_seconds);
     return ESP_OK;
+}
+
+bool wifi_fetch_get_wake_interval(int *hours, int *minutes, int *seconds)
+{
+    if (s_wake_hours < 0)
+        return false;
+    *hours   = s_wake_hours;
+    *minutes = s_wake_minutes;
+    *seconds = s_wake_seconds;
+    return true;
 }
 
 /* ── Status push ─────────────────────────────────────────────────────────── */

@@ -62,6 +62,14 @@ esp_err_t wifi_fetch_post_logs(const char *server_url, const char *api_key,
                                const char *log_path, const char *offset_path);
 
 /**
+ * @brief Get the wake interval from the last /api/next response.
+ *
+ * Returns true if the server provided wake interval headers.
+ * Values are only valid after a successful wifi_fetch_image() call.
+ */
+bool wifi_fetch_get_wake_interval(int *hours, int *minutes, int *seconds);
+
+/**
  * @brief Disconnect WiFi and release resources.
  */
 void wifi_fetch_deinit(void);

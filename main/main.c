@@ -42,10 +42,16 @@ static void set_next_alarm(void)
         return;
     }
 
-    int hours   = config_get_int("wake_interval_hours", 1);
-    int minutes = config_get_int("wake_interval_minutes", 0);
-    int seconds = config_get_int("wake_interval_seconds", 0);
-    ESP_LOGI(TAG, "Wake interval: %dh %dm %ds", hours, minutes, seconds);
+    /* Use server-provided wake interval if available, else config.txt. */
+    int hours, minutes, seconds;
+    if (!wifi_fetch_get_wake_interval(&hours, &minutes, &seconds)) {
+        hours   = config_get_int("wake_interval_hours", 1);
+        minutes = config_get_int("wake_interval_minutes", 0);
+        seconds = config_get_int("wake_interval_seconds", 0);
+        ESP_LOGI(TAG, "Wake interval (config): %dh %dm %ds", hours, minutes, seconds);
+    } else {
+        ESP_LOGI(TAG, "Wake interval (server): %dh %dm %ds", hours, minutes, seconds);
+    }
 
     time_t next = now + hours * 3600 + minutes * 60 + seconds;
     struct tm t;
