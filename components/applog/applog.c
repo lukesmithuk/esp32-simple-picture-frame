@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <time.h>
 
 #include "esp_log.h"
@@ -65,7 +66,7 @@ void applog_init(void)
     s_original_vprintf = esp_log_set_vprintf(log_to_buffer_and_serial);
 }
 
-esp_err_t applog_start(const char *log_path)
+esp_err_t applog_start(const char *log_path, int max_size_kb)
 {
     if (s_log_file) {
         ESP_LOGW(TAG, "Log capture already active");
@@ -77,7 +78,19 @@ esp_err_t applog_start(const char *log_path)
         s_original_vprintf = esp_log_set_vprintf(log_to_file_and_serial);
     }
 
-    /* TODO: log file grows unbounded — consider truncation or rotation. */
+    /* Roll the log file if it exceeds the size limit. */
+    if (max_size_kb > 0) {
+        struct stat st;
+        if (stat(log_path, &st) == 0 && st.st_size > max_size_kb * 1024) {
+            char backup[256];
+            snprintf(backup, sizeof(backup), "%s.1", log_path);
+            remove(backup);
+            rename(log_path, backup);
+            ESP_LOGI(TAG, "Log rotated: %s → %s (%ld bytes)",
+                     log_path, backup, st.st_size);
+        }
+    }
+
     s_log_file = fopen(log_path, "a");
     if (!s_log_file) {
         ESP_LOGW(TAG, "Cannot open log file: %s", log_path);

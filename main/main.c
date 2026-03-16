@@ -131,11 +131,12 @@ void app_main(void)
     }
     sd_mounted = true;
 
-    /* Start logging all ESP_LOG output to SD card. */
-    applog_start(SYSTEM_LOG);
-
-    /* Load config (wake interval, etc.). Missing file uses defaults. */
+    /* Load config first — needed for log rolling threshold and WiFi settings. */
     config_load(CONFIG_PATH);
+
+    /* Start logging all ESP_LOG output to SD card (with rolling). */
+    int log_max_kb = config_get_int("log_max_size_kb", 256);
+    applog_start(SYSTEM_LOG, log_max_kb);
 
     /* Pick a random image */
     char img_path[IMAGE_PICKER_PATH_MAX];

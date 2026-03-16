@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 #include "esp_log.h"
 
@@ -80,8 +81,11 @@ esp_err_t config_load(const char *path)
         strncpy(s_entries[s_count].value, val, MAX_VAL_LEN - 1);
         s_entries[s_count].value[MAX_VAL_LEN - 1] = '\0';
 
+        /* Mask sensitive values in log output. */
+        bool sensitive = (strcasestr(key, "password") != NULL
+                       || strcasestr(key, "key") != NULL);
         ESP_LOGI(TAG, "%s = %s", s_entries[s_count].key,
-                 s_entries[s_count].value);
+                 sensitive ? "****" : s_entries[s_count].value);
         s_count++;
     }
 
