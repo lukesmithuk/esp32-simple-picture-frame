@@ -73,6 +73,16 @@ static void show_error(uint8_t *frame_buf, const char *message)
     epd_display(frame_buf);
 }
 
+static void suppress_noisy_logs(void)
+{
+    esp_log_level_set("wifi", ESP_LOG_WARN);
+    esp_log_level_set("wifi_init", ESP_LOG_WARN);
+    esp_log_level_set("phy_init", ESP_LOG_WARN);
+    esp_log_level_set("esp_netif_handlers", ESP_LOG_WARN);
+    esp_log_level_set("pp", ESP_LOG_WARN);
+    esp_log_level_set("net80211", ESP_LOG_WARN);
+}
+
 static void log_boot_info(void)
 {
     if (board_rtc_is_available()) {
@@ -172,6 +182,7 @@ static esp_err_t try_sd_fetch(uint8_t **img_buf, size_t *img_size)
 void app_main(void)
 {
     applog_init();
+    suppress_noisy_logs();
 
     esp_sleep_wakeup_cause_t wakeup = esp_sleep_get_wakeup_cause();
     if (wakeup == ESP_SLEEP_WAKEUP_EXT0) {
