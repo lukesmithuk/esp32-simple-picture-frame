@@ -16,4 +16,5 @@ idf_component_register(
         epd_text
         applog
         config
+        wifi_fetch
 )
