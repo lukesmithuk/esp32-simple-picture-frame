@@ -11,7 +11,8 @@
 
     <section class="upload">
         <h2>Upload Images</h2>
-        <form action="/api/upload" method="post" enctype="multipart/form-data">
+        <form action="/api/upload" method="post" enctype="multipart/form-data"
+              onsubmit="if (!this.files.files.length) { alert('Please select one or more images first.'); return false; }">
             <input type="file" name="files" multiple accept="image/jpeg,image/png">
             <button type="submit">Upload</button>
         </form>
