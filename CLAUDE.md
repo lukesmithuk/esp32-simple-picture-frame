@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ESP32-S3 e-paper picture frame firmware for the Waveshare ESP32-S3-PhotoPainter board. The device wakes from deep sleep on an RTC alarm, loads a baseline JPEG from SD card, decodes and dithers it to the 6-colour Spectra 6 (E6) e-paper palette, renders it, then sleeps again. ESP-IDF v5.5.3. Primarily C; C++ components are acceptable where useful (e.g. third-party drivers).
+ESP32-S3 e-paper picture frame firmware for the Waveshare ESP32-S3-PhotoPainter board. The device wakes from deep sleep on an RTC alarm, fetches a JPEG from a WiFi photo server (or SD card fallback), decodes and dithers it to the 6-colour Spectra 6 (E6) e-paper palette, renders it, then sleeps again. ESP-IDF v5.5.3. Primarily C; C++ components are acceptable where useful (e.g. third-party drivers).
 
 All I2C is bit-banged (~100 kHz). The IDF v5.5.3 I2C master driver on ESP32-S3 fires corrupt SCL clear-bus pulses on transaction timeouts, permanently wedging the PMIC after RTS-triggered reset.
 
@@ -49,6 +49,16 @@ python3 monitor.py --timeout 30
 idf.py menuconfig
 ```
 
+## Server
+
+Python/FastAPI photo server (in `server/`). See `server/install.sh` for setup.
+
+```bash
+cd server && ./install.sh          # create venv + install deps
+PHOTOFRAME_API_KEY=yourkey ./run.sh # start for testing
+./install-service.sh               # install as systemd service
+```
+
 ## Component Map
 
 | Component | Purpose | Key dependencies |
@@ -62,6 +72,7 @@ idf.py menuconfig
 | `epd_text` | 8x8 bitmap font renderer for 4bpp frame buffer | `epd` (constants only) |
 | `applog` | ESP_LOG tee to SD card file + explicit log writes | (none) |
 | `config` | Key=value config file reader from SD card | (none) |
+| `wifi_fetch` | WiFi connect, NTP sync, HTTP image/status/log client | `esp_wifi`, `esp_http_client`, `board` |
 
 ## IDF v5 Component Names
 
@@ -90,6 +101,27 @@ Panel scans bottom-right origin — `epd_display()` rotates the frame buffer 180
 - Cover-mode nearest-neighbor scale to 800×480 (fill display, centre-crop excess)
 - Floyd-Steinberg dither with **measured** palette values (not theoretical sRGB)
 - Measured palette: Black(2,2,2) White(190,200,200) Yellow(205,202,0) Red(135,19,0) Blue(5,64,158) Green(39,102,60)
+
+## Config File (`/sdcard/config.txt`)
+
+Key=value format, `#` comments. All keys optional.
+
+| Key | Default | Purpose |
+|-----|---------|---------|
+| `wake_interval_hours` | 1 | Hours between updates |
+| `wake_interval_minutes` | 0 | Minutes between updates |
+| `wake_interval_seconds` | 0 | Seconds between updates |
+| `wifi_ssid` | *(none)* | WiFi network (absent = WiFi skipped) |
+| `wifi_password` | `""` | WiFi password |
+| `server_url` | `""` | Photo server URL |
+| `server_api_key` | `""` | API key for server |
+| `log_max_size_kb` | 256 | Log file rotation threshold |
+
+## Gotchas
+
+- **sdkconfig.defaults changes** require `rm -rf build sdkconfig && idf.py build` to take effect
+- **16MB flash**: Board has 16MB flash — set in sdkconfig.defaults, uses `single_app_large` partition
+- **Sensitive config keys**: `password` and `key` values are masked in log output
 
 ## Reference Implementations
 
