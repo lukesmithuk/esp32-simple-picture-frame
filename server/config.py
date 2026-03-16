@@ -11,6 +11,8 @@ HOST = os.environ.get("PHOTOFRAME_HOST", "0.0.0.0")
 PORT = int(os.environ.get("PHOTOFRAME_PORT", "8080"))
 
 MAX_IMAGE_SIZE = 4 * 1024 * 1024  # 4 MB — matches frame's limit
+DISPLAY_WIDTH = 800
+DISPLAY_HEIGHT = 480
 
 # Create directories on import
 IMAGES_DIR.mkdir(exist_ok=True)

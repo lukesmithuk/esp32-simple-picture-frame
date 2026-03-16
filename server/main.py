@@ -122,12 +122,21 @@ async def upload_images(files: list[UploadFile] = File(...)):
         if len(data) > config.MAX_IMAGE_SIZE:
             continue  # Skip oversized files
 
-        # Convert to baseline JPEG (handles progressive JPEG, PNG, etc.)
+        # Convert to baseline JPEG, resize to fit display
         try:
             img = Image.open(io.BytesIO(data))
-            img = img.convert("RGB")  # Strip alpha, ensure RGB
+            img = img.convert("RGB")
         except Exception:
             continue  # Skip unreadable images
+
+        # Resize if larger than display (cover mode: fit largest dimension)
+        max_w, max_h = config.DISPLAY_WIDTH, config.DISPLAY_HEIGHT
+        if img.width > max_w or img.height > max_h:
+            # Scale so the smaller dimension matches the display
+            scale = max(max_w / img.width, max_h / img.height)
+            new_w = int(img.width * scale)
+            new_h = int(img.height * scale)
+            img = img.resize((new_w, new_h), Image.LANCZOS)
 
         # Force .jpg extension
         stem = Path(file.filename).stem
