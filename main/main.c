@@ -53,7 +53,16 @@ static void set_next_alarm(void)
         ESP_LOGI(TAG, "Wake interval (server): %dh %dm %ds", hours, minutes, seconds);
     }
 
-    time_t next = now + hours * 3600 + minutes * 60 + seconds;
+    int total_seconds = hours * 3600 + minutes * 60 + seconds;
+    if (total_seconds <= 0) {
+        ESP_LOGW(TAG, "Wake interval %ds invalid, using default 1h", total_seconds);
+        hours = 1;
+        minutes = 0;
+        seconds = 0;
+        total_seconds = 3600;
+    }
+
+    time_t next = now + total_seconds;
     struct tm t;
     localtime_r(&next, &t);
     ESP_LOGI(TAG, "Next alarm: %02d:%02d:%02d", t.tm_hour, t.tm_min, t.tm_sec);

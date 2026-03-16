@@ -129,6 +129,8 @@ async def test_upload_image():
         )
     assert r.status_code == 303
     assert (config.IMAGES_DIR / "photo.jpg").exists()
+    images = await db.list_images()
+    assert any(img["filename"] == "photo.jpg" for img in images)
 
 
 @pytest.mark.asyncio
@@ -143,6 +145,7 @@ async def test_delete_image_api():
     await tdb.close()
 
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        r = await client.delete(f"/api/images/{image_id}")
+        r = await client.delete(f"/api/images/{image_id}",
+                                headers={"X-API-Key": config.API_KEY})
     assert r.status_code == 200
     assert not (config.IMAGES_DIR / "del.jpg").exists()

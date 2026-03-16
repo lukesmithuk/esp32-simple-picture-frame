@@ -79,6 +79,7 @@ async def api_next(frame_id: int = Depends(get_frame_id)):
 # ── API: Status + Logs ──────────────────────────────────────────────────
 
 class FrameStatus(BaseModel):
+    battery_connected: bool | None = None
     battery_percent: int | None = None
     battery_mv: int | None = None
     charging: bool | None = None
@@ -156,7 +157,7 @@ async def upload_images(files: list[UploadFile] = File(...)):
 
 
 @app.delete("/api/images/{image_id}")
-async def delete_image(image_id: int):
+async def delete_image(image_id: int, _: str = Depends(verify_api_key)):
     image = await db.get_image_by_id(image_id)
     if not image:
         raise HTTPException(status_code=404, detail="Image not found")
@@ -177,8 +178,12 @@ async def delete_image(image_id: int):
 @app.get("/thumbs/{filename}")
 async def serve_thumb(filename: str):
     path = config.THUMBS_DIR / filename
+    if not path.resolve().is_relative_to(config.THUMBS_DIR.resolve()):
+        raise HTTPException(status_code=400, detail="Invalid filename")
     if not path.exists():
         orig = config.IMAGES_DIR / filename
+        if not orig.resolve().is_relative_to(config.IMAGES_DIR.resolve()):
+            raise HTTPException(status_code=400, detail="Invalid filename")
         if orig.exists():
             generate_thumbnail(orig, path)
     if path.exists():
@@ -204,9 +209,18 @@ async def index(request: Request, uploaded: int | None = None, saved: int | None
 @app.post("/settings")
 async def save_settings(request: Request):
     form = await request.form()
-    hours = int(form.get("wake_hours", 1))
-    minutes = int(form.get("wake_minutes", 0))
-    seconds = int(form.get("wake_seconds", 0))
+    try:
+        hours = int(form.get("wake_hours", 1))
+        minutes = int(form.get("wake_minutes", 0))
+        seconds = int(form.get("wake_seconds", 0))
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid integer value")
+    if not (0 <= hours <= 720):
+        raise HTTPException(status_code=400, detail="Hours must be 0-720")
+    if not (0 <= minutes <= 59):
+        raise HTTPException(status_code=400, detail="Minutes must be 0-59")
+    if not (0 <= seconds <= 59):
+        raise HTTPException(status_code=400, detail="Seconds must be 0-59")
     await db.set_wake_interval(hours, minutes, seconds)
     return RedirectResponse(url="/?saved=1", status_code=303)
 

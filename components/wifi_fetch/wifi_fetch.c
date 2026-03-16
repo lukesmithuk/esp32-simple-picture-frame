@@ -90,7 +90,10 @@ static void sync_ntp(void)
 static void build_url(char *buf, size_t buf_size,
                       const char *server_url, const char *path)
 {
-    snprintf(buf, buf_size, "%s%s", server_url, path);
+    int n = snprintf(buf, buf_size, "%s%s", server_url, path);
+    if (n >= (int)buf_size) {
+        ESP_LOGW(TAG, "URL truncated (%d chars, buffer %zu)", n, buf_size);
+    }
 }
 
 /* ── Public API ──────────────────────────────────────────────────────────── */
@@ -111,7 +114,11 @@ esp_err_t wifi_fetch_init(const char *ssid, const char *password)
     s_wifi_event_group = xEventGroupCreate();
 
     ESP_ERROR_CHECK(esp_netif_init());
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    esp_err_t el_err = esp_event_loop_create_default();
+    if (el_err != ESP_OK && el_err != ESP_ERR_INVALID_STATE) {
+        ESP_LOGE(TAG, "Event loop create failed: %s", esp_err_to_name(el_err));
+        return el_err;
+    }
     esp_netif_create_default_wifi_sta();
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
@@ -377,7 +384,7 @@ esp_err_t wifi_fetch_post_logs(const char *server_url, const char *api_key,
     if (!lf) return ESP_FAIL;
     fseek(lf, offset, SEEK_SET);
 
-    char *buf = malloc(new_bytes);
+    char *buf = heap_caps_malloc(new_bytes, MALLOC_CAP_SPIRAM);
     if (!buf) { fclose(lf); return ESP_ERR_NO_MEM; }
 
     size_t read_len = fread(buf, 1, new_bytes, lf);

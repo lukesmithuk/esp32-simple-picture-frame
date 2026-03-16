@@ -120,7 +120,8 @@ void applog_stop(void)
 
     if (s_original_vprintf) {
         esp_log_set_vprintf(s_original_vprintf);
-        s_original_vprintf = NULL;
+        /* Keep s_original_vprintf pointing to the real handler so
+           applog_init() can be called again safely. */
     }
 
     if (s_log_file) {

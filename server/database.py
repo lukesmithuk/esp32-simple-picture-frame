@@ -29,6 +29,7 @@ class Database:
                 battery_mv INTEGER,
                 charging INTEGER,
                 usb_connected INTEGER,
+                battery_connected INTEGER,
                 sd_free_kb INTEGER,
                 firmware_version TEXT,
                 logs TEXT DEFAULT ''
@@ -117,12 +118,13 @@ class Database:
         now = datetime.now(timezone.utc).isoformat()
         await self.db.execute(
             """UPDATE frames SET
-                last_seen = ?, battery_percent = ?, battery_mv = ?,
-                charging = ?, usb_connected = ?, sd_free_kb = ?,
-                firmware_version = ?
+                last_seen = ?, battery_connected = ?, battery_percent = ?,
+                battery_mv = ?, charging = ?, usb_connected = ?,
+                sd_free_kb = ?, firmware_version = ?
             WHERE id = ?""",
             (
                 now,
+                status.get("battery_connected"),
                 status.get("battery_percent"),
                 status.get("battery_mv"),
                 status.get("charging"),
@@ -136,10 +138,13 @@ class Database:
 
     # -- Logs --
 
+    # Keep at most 512 KB of logs per frame to prevent unbounded growth.
+    _LOG_MAX_BYTES = 512 * 1024  # 524288
+
     async def append_logs(self, frame_id: int, text: str):
         await self.db.execute(
-            "UPDATE frames SET logs = logs || ? WHERE id = ?",
-            (text, frame_id),
+            "UPDATE frames SET logs = substr(logs || ?, ?) WHERE id = ?",
+            (text, -self._LOG_MAX_BYTES, frame_id),
         )
         await self.db.commit()
 
