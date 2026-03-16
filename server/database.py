@@ -33,6 +33,10 @@ class Database:
                 firmware_version TEXT,
                 logs TEXT DEFAULT ''
             );
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 frame_id INTEGER NOT NULL,
@@ -145,6 +149,35 @@ class Database:
         )
         row = await cursor.fetchone()
         return row["logs"] if row else ""
+
+    # -- Settings --
+
+    async def get_setting(self, key: str, default: str = "") -> str:
+        cursor = await self.db.execute(
+            "SELECT value FROM settings WHERE key = ?", (key,)
+        )
+        row = await cursor.fetchone()
+        return row["value"] if row else default
+
+    async def set_setting(self, key: str, value: str):
+        await self.db.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+            (key, value),
+        )
+        await self.db.commit()
+
+    async def get_wake_interval(self) -> dict:
+        """Returns {hours, minutes, seconds}. Default: 1h 0m 0s."""
+        return {
+            "hours": int(await self.get_setting("wake_interval_hours", "1")),
+            "minutes": int(await self.get_setting("wake_interval_minutes", "0")),
+            "seconds": int(await self.get_setting("wake_interval_seconds", "0")),
+        }
+
+    async def set_wake_interval(self, hours: int, minutes: int, seconds: int):
+        await self.set_setting("wake_interval_hours", str(hours))
+        await self.set_setting("wake_interval_minutes", str(minutes))
+        await self.set_setting("wake_interval_seconds", str(seconds))
 
     # -- Shuffle --
 

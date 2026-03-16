@@ -61,12 +61,17 @@ async def api_next(frame_id: int = Depends(get_frame_id)):
         return Response(status_code=204)
 
     data = image_path.read_bytes()
+    wake = await db.get_wake_interval()
+
     return Response(
         content=data,
         media_type="image/jpeg",
         headers={
             "X-Image-Name": image["filename"],
             "Content-Length": str(len(data)),
+            "X-Wake-Hours": str(wake["hours"]),
+            "X-Wake-Minutes": str(wake["minutes"]),
+            "X-Wake-Seconds": str(wake["seconds"]),
         },
     )
 
@@ -173,15 +178,28 @@ async def serve_thumb(filename: str):
 
 
 @app.get("/")
-async def index(request: Request, uploaded: int | None = None):
+async def index(request: Request, uploaded: int | None = None, saved: int | None = None):
     images = await db.list_images()
     frames = await db.list_frames()
+    wake = await db.get_wake_interval()
     return templates.TemplateResponse("index.html", {
         "request": request,
         "images": images,
         "frames": frames,
         "uploaded": uploaded,
+        "saved": saved,
+        "wake": wake,
     })
+
+
+@app.post("/settings")
+async def save_settings(request: Request):
+    form = await request.form()
+    hours = int(form.get("wake_hours", 1))
+    minutes = int(form.get("wake_minutes", 0))
+    seconds = int(form.get("wake_seconds", 0))
+    await db.set_wake_interval(hours, minutes, seconds)
+    return RedirectResponse(url="/?saved=1", status_code=303)
 
 
 @app.get("/logs/{frame_id}")
