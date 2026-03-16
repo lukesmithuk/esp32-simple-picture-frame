@@ -65,6 +65,7 @@ dependencies.lock
 .vscode/
 
 # Server
+server/server.env
 server/venv/
 server/images/
 server/thumbs/
