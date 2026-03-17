@@ -78,7 +78,10 @@
     <script>
         async function deleteImage(id, name) {
             if (!confirm("Delete " + name + "?")) return;
-            const r = await fetch("/api/images/" + id, { method: "DELETE" });
+            const r = await fetch("/api/images/" + id, {
+                method: "DELETE",
+                headers: {"X-API-Key": "{{ api_key }}"}
+            });
             if (r.ok) location.reload();
             else alert("Delete failed");
         }

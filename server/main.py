@@ -203,6 +203,7 @@ async def index(request: Request, uploaded: int | None = None, saved: int | None
         "uploaded": uploaded,
         "saved": saved,
         "wake": wake,
+        "api_key": config.API_KEY,
     })
 
 
