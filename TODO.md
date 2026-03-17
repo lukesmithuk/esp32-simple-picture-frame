@@ -34,6 +34,12 @@
 - [ ] Measure deep-sleep current consumption
 - [ ] Battery support — read battery level from AXP2101, low-battery warning on display
 
+## Security
+
+- [ ] HTTPS transport — TLS on ESP32-S3 (`esp_tls`) + certificate on Pi; would protect API key in transit
+- [ ] Session-based web UI auth — replace injected API key with login/session cookies for web UI actions
+- [ ] API key not visible in page source — currently injected into HTML template for JS delete handler
+
 ## Build / Tooling
 
 - [x] FATFS LFN — fixed by deleting build/ and sdkconfig to regenerate from sdkconfig.defaults
