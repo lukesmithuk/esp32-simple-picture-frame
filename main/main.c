@@ -289,6 +289,7 @@ sleep:
     }
 #else
     set_next_alarm();   /* reads config values from RAM — safe after SD unmount */
+    board_sleep();      /* PMIC low-power mode — cuts all rails except DCDC1 */
     board_enter_deep_sleep();
     /* Does not return */
 #endif

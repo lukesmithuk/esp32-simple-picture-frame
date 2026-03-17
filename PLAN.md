@@ -4,8 +4,9 @@
 
 ESP32-S3 e-paper picture frame on the Waveshare ESP32-S3-PhotoPainter board.
 
-Wake from deep sleep on RTC alarm → load image from SD card → dither to
-6-colour e-paper palette → render to display → sleep until next alarm.
+Wake from deep sleep on RTC alarm → fetch image from WiFi server (or SD card
+fallback) → dither to 6-colour e-paper palette → render to display → PMIC
+sleep → deep sleep until next alarm.
 
 ---
 
@@ -22,8 +23,14 @@ app_main (main/)
         ├── board_epd_power(true)             [→ AXP2101 ALDO3 enable]
         ├── epd_init()                        [components/epd/]
         ├── sdcard_mount()                    [components/sdcard/]
-        ├── image_picker_pick()               [components/image_picker/]
-        ├── image_loader_load()               [components/image_loader/]
+        ├── config_load()                     [components/config/]
+        ├── try_wifi_fetch()                  [components/wifi_fetch/]
+        │     ├── WiFi connect (10s timeout)
+        │     ├── NTP sync → RTC update
+        │     ├── Upload logs + push status
+        │     ├── GET /api/next → img_buf
+        │     └── WiFi disconnect
+        ├── (fallback) image_picker + loader  [SD card if WiFi fails]
         ├── image_decode_jpeg()               [components/image_decode/]
         │     ├── JPEG decode (TJpgDec ROM)
         │     ├── Scale (cover + centre-crop)
@@ -33,6 +40,7 @@ app_main (main/)
         ├── sdcard_unmount()
         ├── epd_deinit()
         ├── board_epd_power(false)
+        ├── board_sleep()                     [PMIC low-power mode]
         └── board_enter_deep_sleep()          [RTC alarm → EXT0 wake]
 ```
 
@@ -50,6 +58,8 @@ app_main (main/)
 | `components/epd_text/` | C | 8x8 bitmap font for error messages |
 | `components/applog/` | C | ESP_LOG tee to SD card file + explicit log writes |
 | `components/config/` | C | Key=value config file reader from SD card |
+| `components/wifi_fetch/` | C | WiFi, NTP, HTTP image/status/log client |
+| `server/` | Python | FastAPI photo server with web UI |
 | `main/` | C | App entry point, integration tests |
 
 ### Test infrastructure
@@ -73,9 +83,10 @@ app_main (main/)
 | 5 | RTC alarm + deep sleep wake cycle | ✅ Done (2026-03-10) |
 | 6 | SD card mount + image selection + error display | ✅ Done (2026-03-14) |
 | 7 | JPEG decode + scale + CDR + dither | ✅ Done (2026-03-14) |
-| 8 | Image pipeline enhancements (EXIF, PNG, rotation) | ⬜ Planned |
+| 8 | Image quality & server processing | ⬜ Planned |
 | 9 | Production loop & reliability | ✅ Done (2026-03-14) |
-| 10 | Power optimisation (pmic_sleep, DLDO mapping) | ⬜ Planned |
+| — | WiFi photo retrieval (server + firmware) | ✅ Done (2026-03-17) |
+| 10 | Power optimisation (PMIC sleep, battery) | ✅ Done (2026-03-17) |
 
 ---
 

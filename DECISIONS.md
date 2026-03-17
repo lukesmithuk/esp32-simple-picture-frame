@@ -196,3 +196,65 @@ tonal range into [measured_black_Y, measured_white_Y].
 typical displays. Without CDR, highlights crush to the same grey and
 shadows crush to the same near-black. CDR redistributes tones to use
 the panel's available range, preserving detail in highlights and shadows.
+
+---
+
+## ADR-014 — WiFi-first image fetch with SD card fallback
+
+**Status:** Accepted
+**Date:** 2026-03-16
+
+**Decision:** When `wifi_ssid` is configured, the frame connects to WiFi
+and fetches the next image from a self-hosted FastAPI server. If WiFi
+connect fails, the server is unreachable, or the gallery is empty, the
+frame falls back to the existing SD card image picker.
+
+**Rationale:** WiFi enables remote photo management via web UI without
+physically accessing the SD card. SD card fallback ensures the frame
+always displays something, even without network.
+
+---
+
+## ADR-015 — Server-side image processing on upload
+
+**Status:** Accepted
+**Date:** 2026-03-16
+
+**Decision:** The server converts all uploaded images to baseline JPEG,
+resizes to 800×480 (cover mode, Lanczos), and strips alpha on upload.
+Accepts JPEG, PNG, and WebP input formats.
+
+**Rationale:** Processing on upload means the frame always receives an
+optimally-sized baseline JPEG, eliminating progressive JPEG decode
+failures and reducing download size and decode time. The Pi has more
+CPU/memory than the ESP32 for image processing.
+
+---
+
+## ADR-016 — PMIC sleep before deep sleep
+
+**Status:** Accepted
+**Date:** 2026-03-17
+
+**Decision:** Call `board_sleep()` (AXP2101 `enableSleep()` + disable
+all rails) immediately before `esp_deep_sleep_start()`.
+
+**Rationale:** Reduces deep sleep current by putting the PMIC into
+low-power mode. DLDO1/DLDO2 pins confirmed unconnected on the Waveshare
+PhotoPainter schematic — the earlier concern about them powering the
+USB-JTAG bridge was unfounded. Serial output stops after `board_sleep()`
+but the ESP32 is about to enter deep sleep anyway.
+
+---
+
+## ADR-017 — Server image sync on startup
+
+**Status:** Accepted
+**Date:** 2026-03-17
+
+**Decision:** On server startup, scan the `images/` directory and add
+any files not already in the SQLite database.
+
+**Rationale:** Allows the database to be safely deleted (e.g. for schema
+changes) without losing uploaded images. The image files persist on disk
+and are re-registered automatically on next startup.

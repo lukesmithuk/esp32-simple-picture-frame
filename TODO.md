@@ -11,12 +11,15 @@
 - [x] Phase 7: JPEG decode → scale → CDR → Floyd-Steinberg dither → display
 - [x] Phase 9: Production loop — log to file, image shuffle, configurable wake, full cycle verified
 
-## Phase 8 — Image Pipeline Enhancements
+## Phase 8 — Image Quality & Server Processing
 
-- [ ] EXIF orientation — TJpgDec ignores EXIF tags; phone photos may display rotated
-- [ ] Portrait auto-rotation — detect portrait aspect ratio, rotate to fill landscape display
-- [ ] Progressive JPEG support — TJpgDec (ROM) only handles baseline; would need a different decoder (e.g. libjpeg-turbo)
-- [ ] PNG support — libpng streaming decode
+**Server-side (upload processing):**
+- [ ] EXIF orientation — apply `ImageOps.exif_transpose` during upload so phone photos display correctly
+- [ ] Portrait auto-rotation — rotate portrait images to landscape during upload
+- [ ] Progressive JPEG — already converted to baseline on upload (done)
+- [ ] PNG/WebP — already converted to JPEG on upload (done)
+
+**Frame-side (dither quality):**
 - [ ] Palette calibration — measure this specific panel's colours for more accurate dithering
 - [ ] S-curve tone mapping — perceptual tone curve before dither (aitjcize reference has this)
 
