@@ -1,5 +1,43 @@
 # Progress Log
 
+## 2026-03-17 — Power Optimisation
+
+- **board_sleep() enabled** before deep sleep — PMIC enters low-power mode,
+  cutting all unnecessary rails. DLDO1/DLDO2 confirmed unconnected on schematic.
+- **Battery support**: AXP2101 ADC enabled for voltage/percent/charge state.
+  Battery status logged on each boot and pushed to server.
+- **Battery-only operation verified**: frame runs from LiPo, wakes on schedule,
+  fetches images, sleeps correctly.
+
+---
+
+## 2026-03-16 — WiFi Photo Retrieval
+
+### Server (Python/FastAPI on Raspberry Pi)
+
+- Web UI: gallery with thumbnails, upload (JPEG/PNG/WebP), delete, frame dashboard
+- Uploads auto-converted to baseline JPEG, resized to 800×480 (Lanczos)
+- `/api/next`: per-frame shuffle without repeat
+- `/api/status` + `/api/logs`: frame pushes status and incremental logs
+- Configurable wake interval from web UI (sent via response headers)
+- Image sync on startup: scans images/ directory, adds missing files to DB
+- API key authentication, systemd service for production
+- 15 tests (database + API)
+
+### Firmware
+
+- New `wifi_fetch` component: WiFi connect (10s timeout), NTP → RTC sync,
+  HTTP image fetch, status push, incremental log upload
+- WiFi-first flow with SD card fallback
+- Server-provided wake interval overrides config.txt
+- Config key masking (passwords/keys logged as ****)
+- Log rolling with configurable max size
+- Real timestamps in logs (system time after RTC init)
+- Git-based firmware version via `esp_app_get_description()`
+- 16MB flash, NVS init for WiFi, noisy WiFi logs suppressed
+
+---
+
 ## 2026-03-14 — Phase 9: Production Loop & Reliability
 
 ### What was built
