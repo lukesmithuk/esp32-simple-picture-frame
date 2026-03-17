@@ -21,6 +21,7 @@ db = Database(config.DB_PATH)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await db.init()
+    await db.sync_images(config.IMAGES_DIR)
     yield
     await db.close()
 

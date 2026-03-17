@@ -1,8 +1,11 @@
+import logging
 import random
 from datetime import datetime, timezone
 from pathlib import Path
 
 import aiosqlite
+
+logger = logging.getLogger("uvicorn.error")
 
 
 class Database:
@@ -52,6 +55,18 @@ class Database:
     async def close(self):
         if self.db:
             await self.db.close()
+
+    async def sync_images(self, images_dir: Path):
+        """Add any image files on disk that aren't in the database."""
+        existing = {img["filename"] for img in await self.list_images()}
+        added = 0
+        for path in sorted(images_dir.iterdir()):
+            if path.is_file() and path.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp"):
+                if path.name not in existing:
+                    await self.add_image(path.name)
+                    added += 1
+        if added:
+            logger.info(f"Synced {added} image(s) from disk to database")
 
     # -- Images --
 
