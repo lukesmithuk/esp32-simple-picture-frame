@@ -36,6 +36,9 @@ jobs:
           # Create runtime-only requirements.txt (strip test deps)
           grep -v -E '^(pytest|httpx|pytest-asyncio)' server/requirements.txt > "$STAGING/requirements.txt"
 
+          # Ensure scripts are executable after extraction
+          chmod +x "$STAGING/setup.sh" "$STAGING/run.sh"
+
           # Create archives
           tar czf "photoframe-server-${{ steps.tag.outputs.TAG }}.tar.gz" "$STAGING"
           cp "photoframe-server-${{ steps.tag.outputs.TAG }}.tar.gz" "photoframe-server.tar.gz"
