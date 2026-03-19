@@ -10,14 +10,16 @@
 - [x] Phase 6: SD card mount, image picker, loader, error display, error logging
 - [x] Phase 7: JPEG decode → scale → CDR → Floyd-Steinberg dither → display
 - [x] Phase 9: Production loop — log to file, image shuffle, configurable wake, full cycle verified
+- [x] WiFi photo retrieval — server + firmware, NTP sync, status/log push, web UI
+- [x] Phase 10: Power optimisation — PMIC sleep, battery status, DLDO mapping
 
 ## Phase 8 — Image Quality & Server Processing
 
 **Server-side (upload processing):**
 - [ ] EXIF orientation — apply `ImageOps.exif_transpose` during upload so phone photos display correctly
 - [ ] Portrait auto-rotation — rotate portrait images to landscape during upload
-- [ ] Progressive JPEG — already converted to baseline on upload (done)
-- [ ] PNG/WebP — already converted to JPEG on upload (done)
+- [x] Progressive JPEG — converted to baseline on upload
+- [x] PNG/WebP — converted to JPEG on upload
 
 **Frame-side (dither quality):**
 - [ ] Palette calibration — measure this specific panel's colours for more accurate dithering
@@ -32,10 +34,11 @@
 
 ## Phase 10 — Power Optimisation
 
-- [ ] Map DLDO1/DLDO2 rails — determine what they power (USB-JTAG serial bridge?)
-- [ ] Enable `board_sleep()` in production — currently disabled because DLDO1/DLDO2 cut kills serial
+- [x] Map DLDO1/DLDO2 rails — confirmed unconnected on schematic
+- [x] Enable `board_sleep()` in production — PMIC low-power mode before deep sleep
 - [ ] Measure deep-sleep current consumption
-- [ ] Battery support — read battery level from AXP2101, low-battery warning on display
+- [x] Battery status — ADC enabled, voltage/percent/charge logged and pushed to server
+- [ ] Low-battery warning — display message on EPD when battery critically low
 
 ## Security
 

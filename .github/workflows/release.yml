@@ -1,0 +1,49 @@
+name: Release Server Package
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get tag name
+        id: tag
+        run: echo "TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Build server archive
+        run: |
+          STAGING="photoframe-server"
+          mkdir -p "$STAGING/templates" "$STAGING/static"
+
+          # Copy server files
+          cp server/config.py "$STAGING/"
+          cp server/database.py "$STAGING/"
+          cp server/main.py "$STAGING/"
+          cp server/run.sh "$STAGING/"
+          cp server/setup.sh "$STAGING/"
+          cp -r server/templates/* "$STAGING/templates/"
+          cp -r server/static/* "$STAGING/static/"
+
+          # Create runtime-only requirements.txt (strip test deps)
+          grep -v -E '^(pytest|httpx|pytest-asyncio)' server/requirements.txt > "$STAGING/requirements.txt"
+
+          # Create archives
+          tar czf "photoframe-server-${{ steps.tag.outputs.TAG }}.tar.gz" "$STAGING"
+          cp "photoframe-server-${{ steps.tag.outputs.TAG }}.tar.gz" "photoframe-server.tar.gz"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ steps.tag.outputs.TAG }}
+          files: |
+            photoframe-server-${{ steps.tag.outputs.TAG }}.tar.gz
+            photoframe-server.tar.gz

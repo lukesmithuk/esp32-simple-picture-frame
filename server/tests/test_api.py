@@ -126,6 +126,7 @@ async def test_upload_image():
         r = await client.post(
             "/api/upload",
             files={"files": ("photo.jpg", test_jpeg, "image/jpeg")},
+            data={"api_key": config.API_KEY},
         )
     assert r.status_code == 303
     assert (config.IMAGES_DIR / "photo.jpg").exists()
