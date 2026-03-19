@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import (
-    Body, Depends, FastAPI, File, Header, HTTPException,
+    Body, Depends, FastAPI, File, Form, Header, HTTPException,
     Request, UploadFile,
 )
 from fastapi.responses import FileResponse, RedirectResponse, Response
@@ -115,7 +115,15 @@ def generate_thumbnail(image_path: Path, thumb_path: Path, size=(200, 200)):
 
 
 @app.post("/api/upload")
-async def upload_images(files: list[UploadFile] = File(...)):
+async def upload_images(
+    files: list[UploadFile] = File(...),
+    api_key: str = Form(None),
+    x_api_key: str = Header(None),
+):
+    # Accept API key from form field (web UI) or header (API client)
+    key = api_key or x_api_key
+    if not key or key != config.API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid API key")
     uploaded = 0
     for file in files:
         data = await file.read()
