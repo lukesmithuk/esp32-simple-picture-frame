@@ -59,6 +59,14 @@ PHOTOFRAME_API_KEY=yourkey ./run.sh # start for testing
 ./install-service.sh               # install as systemd service
 ```
 
+**Install from release** (no git needed):
+```bash
+curl -L https://github.com/lukesmithuk/esp32-simple-picture-frame/releases/latest/download/photoframe-server.tar.gz | tar xz
+cd photoframe-server && ./setup.sh
+```
+
+**Uninstall:** `./uninstall.sh` (removes systemd service, optionally deletes data)
+
 ## Component Map
 
 | Component | Purpose | Key dependencies |

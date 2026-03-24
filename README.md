@@ -26,19 +26,24 @@ Includes a self-hosted photo server with a web UI for uploading and managing ima
 
 ### Server (Raspberry Pi or any Linux machine)
 
+**Option A — Install from release** (no git needed):
+```bash
+curl -L https://github.com/lukesmithuk/esp32-simple-picture-frame/releases/latest/download/photoframe-server.tar.gz | tar xz
+cd photoframe-server
+./setup.sh    # creates venv, installs deps, prompts for API key, installs systemd service
+```
+
+**Option B — From source** (for development):
 ```bash
 cd server
 ./install.sh                          # create venv + install deps
 PHOTOFRAME_API_KEY=yourkey ./run.sh   # start server
+./install-service.sh                  # install as systemd service
 ```
 
 Open `http://<server-ip>:8080` to upload photos and monitor frames.
 
-For production (auto-start on boot):
-
-```bash
-./install-service.sh   # prompts for API key, installs systemd service
-```
+**Uninstall:** `./uninstall.sh`
 
 ### Frame Firmware
 

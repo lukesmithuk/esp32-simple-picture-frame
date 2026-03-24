@@ -49,3 +49,5 @@
 ## Build / Tooling
 
 - [x] FATFS LFN — fixed by deleting build/ and sdkconfig to regenerate from sdkconfig.defaults
+- [x] Server install package — setup.sh, uninstall.sh, GitHub Action release on tag push
+- [x] Pinned server dependencies — prevents version drift between platforms
