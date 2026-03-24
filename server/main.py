@@ -205,8 +205,7 @@ async def index(request: Request, uploaded: int | None = None, saved: int | None
     images = await db.list_images()
     frames = await db.list_frames()
     wake = await db.get_wake_interval()
-    return templates.TemplateResponse("index.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "index.html", context={
         "images": images,
         "frames": frames,
         "uploaded": uploaded,
@@ -241,8 +240,7 @@ async def frame_logs(request: Request, frame_id: int):
     if not frame:
         raise HTTPException(status_code=404, detail="Frame not found")
     logs = await db.get_logs(frame_id)
-    return templates.TemplateResponse("logs.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "logs.html", context={
         "frame": frame,
         "logs": logs,
     })
