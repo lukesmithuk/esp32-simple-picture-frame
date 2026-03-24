@@ -13,7 +13,7 @@ All I2C is bit-banged (~100 kHz). The IDF v5.5.3 I2C master driver on ESP32-S3 f
 - **Product page**: https://www.waveshare.com/esp32-s3-photopainter.htm
 - **Wiki**: https://www.waveshare.com/wiki/ESP32-S3-PhotoPainter
 - **Waveshare repo**: https://github.com/waveshareteam/ESP32-S3-PhotoPainter
-- **Schematic**: `hardware/ESP32-S3-PhotoPainter-Schematic.pdf` (also at https://files.waveshare.com/wiki/ESP32-S3-PhotoPainter/ESP32-S3-PhotoPainter-Schematic.pdf)
+- **Schematic**: `hardware/photopainter-schematic.pdf` (also at https://files.waveshare.com/wiki/ESP32-S3-PhotoPainter/ESP32-S3-PhotoPainter-Schematic.pdf)
 
 ## Build System
 
@@ -66,6 +66,11 @@ cd photoframe-server && ./setup.sh
 ```
 
 **Uninstall:** `./uninstall.sh` (removes systemd service, optionally deletes data)
+
+**Run tests:**
+```bash
+cd server && source venv/bin/activate && python -m pytest tests/ -v
+```
 
 ## Component Map
 
@@ -130,6 +135,7 @@ Key=value format, `#` comments. All keys optional.
 - **sdkconfig.defaults changes** require `rm -rf build sdkconfig && idf.py build` to take effect
 - **16MB flash**: Board has 16MB flash — set in sdkconfig.defaults, uses `single_app_large` partition
 - **Sensitive config keys**: `password` and `key` values are masked in log output
+- **Deep sleep debug**: Enable `CONFIG_DISABLE_DEEP_SLEEP` in menuconfig to prevent sleep during development
 
 ## Reference Implementations
 
