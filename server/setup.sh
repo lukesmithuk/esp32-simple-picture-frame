@@ -38,6 +38,12 @@ if ! python3 -m venv --help &>/dev/null; then
     exit 1
 fi
 
+# Check libjpeg-dev (needed to build Pillow)
+if ! dpkg -s libjpeg-dev &>/dev/null 2>&1; then
+    echo "Installing libjpeg-dev (required by Pillow)..."
+    sudo apt install -y libjpeg-dev
+fi
+
 # ── Virtual environment ──────────────────────────────────────────────────
 
 cd "$SCRIPT_DIR"
