@@ -46,6 +46,10 @@
 - [ ] Session-based web UI auth — replace injected API key with login/session cookies for web UI actions
 - [ ] API key not visible in page source — removed from inline JS (now uses data attributes), but still in hidden form field for upload
 
+## Web UI
+
+- [ ] Live updates — auto-refresh frames table and gallery (polling or SSE) so the dashboard stays current without manual reload
+
 ## Build / Tooling
 
 - [x] FATFS LFN — fixed by deleting build/ and sdkconfig to regenerate from sdkconfig.defaults
