@@ -49,6 +49,11 @@ python3 monitor.py --timeout 30
 idf.py menuconfig
 ```
 
+**Clean rebuild (required after sdkconfig.defaults changes):**
+```bash
+rm -rf build sdkconfig && idf.py build
+```
+
 ## Server
 
 Python/FastAPI photo server (in `server/`). See `server/install.sh` for setup.
@@ -71,6 +76,16 @@ cd photoframe-server && ./setup.sh
 ```bash
 cd server && source venv/bin/activate && python -m pytest tests/ -v
 ```
+
+### Server Architecture
+
+- **Backend**: FastAPI + Jinja2 templates, SQLite (aiosqlite), Pillow for image processing
+- **Frontend**: Server-rendered HTML, vanilla CSS/JS (no build tools, no Node.js)
+- **Deployment target**: Raspberry Pi Zero 2W (512MB RAM) — keep dependencies lightweight
+- **Templates**: `server/templates/` (index.html, logs.html)
+- **Static assets**: `server/static/` (style.css)
+- **Database**: `server/photoframe.db` (SQLite, auto-created)
+- **Timestamps**: Stored as UTC ISO 8601 with `+00:00` suffix, converted to local time in browser
 
 ## Component Map
 
@@ -132,6 +147,7 @@ Key=value format, `#` comments. All keys optional.
 
 ## Gotchas
 
+- **Physical buttons**: PWR (PMIC wake/reset), BOOT (download mode), KEY (GPIO)
 - **sdkconfig.defaults changes** require `rm -rf build sdkconfig && idf.py build` to take effect
 - **16MB flash**: Board has 16MB flash — set in sdkconfig.defaults, uses `single_app_large` partition
 - **Sensitive config keys**: `password` and `key` values are masked in log output

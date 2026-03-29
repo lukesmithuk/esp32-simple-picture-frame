@@ -1,5 +1,23 @@
 # Progress Log
 
+## 2026-03-29 — Web UI Redesign
+
+- **Dark observatory theme** replacing plain white UI — CSS custom properties,
+  card-based layout, responsive auto-fill grid, hover effects
+- **Battery indicators**: visual bar (green/amber/red) + status badges
+  (Charging, USB, Battery) in frames table
+- **Drag-and-drop upload**: client-side file type validation, upload progress
+  state, error feedback on server failure
+- **Local timezone display**: UTC timestamps converted to browser local time
+  via JS (no server changes)
+- **XSS fix**: replaced inline `onclick` with data attributes + event delegation
+  to prevent filename injection in delete handler
+- **No external dependencies**: removed Google Fonts CDN, uses system font stack
+  for fully offline operation on Pi Zero 2W
+- Stays server-rendered Jinja2 + vanilla CSS/JS — no build tools, no Node.js
+
+---
+
 ## 2026-03-17 — Power Optimisation
 
 - **board_sleep() enabled** before deep sleep — PMIC enters low-power mode,
