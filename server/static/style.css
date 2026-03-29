@@ -507,6 +507,7 @@ body {
   border-radius: 2px;
   position: relative;
   display: inline-block;
+  overflow: hidden;
 }
 
 .battery-bar::after {
@@ -522,9 +523,9 @@ body {
 
 .battery-fill {
   position: absolute;
-  left: 1px;
-  top: 1px;
-  bottom: 1px;
+  left: 0;
+  top: 0;
+  bottom: 0;
   border-radius: 1px;
   transition: width 300ms ease;
 }

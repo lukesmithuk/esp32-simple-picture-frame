@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Photo Frame Server</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/style.css?v={{ css_v }}">
 </head>
 <body>
     <header class="site-header">
@@ -123,7 +123,7 @@
                             <span class="battery">
                                 <span class="battery-bar">
                                     <span class="battery-fill {{ 'high' if f.battery_percent > 50 else ('mid' if f.battery_percent > 20 else 'low') }}"
-                                          style="width: {{ (f.battery_percent * 22 / 100) | round(1) }}px"></span>
+                                          style="width: {{ f.battery_percent }}%"></span>
                                 </span>
                                 {{ f.battery_percent }}%
                             </span>
@@ -163,7 +163,8 @@
             else el.textContent = input.files.length + ' files selected';
         }
 
-        document.querySelector('.gallery-grid').addEventListener('click', async function(ev) {
+        var gallery = document.querySelector('.gallery-grid');
+        gallery && gallery.addEventListener('click', async function(ev) {
             var btn = ev.target.closest('[data-id]');
             if (!btn) return;
             var id = btn.getAttribute('data-id');
