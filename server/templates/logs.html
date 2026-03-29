@@ -7,15 +7,32 @@
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <h1><a href="/">Photo Frame Server</a></h1>
+    <header class="site-header">
+        <div class="inner">
+            <a href="/" class="site-title"><span class="icon"></span> Photo Frame</a>
+        </div>
+    </header>
 
-    <h2>Logs — {{ frame.mac_address }}</h2>
-    <p>Last seen: {{ frame.last_seen or "never" }}</p>
+    <div class="container">
+        <a href="/" class="back-link">Back to dashboard</a>
 
-    {% if logs %}
-    <pre class="logs">{{ logs }}</pre>
-    {% else %}
-    <p>No logs received from this frame yet.</p>
-    {% endif %}
+        <section class="section">
+            <div class="section-header">
+                <h2 class="section-title">Device Logs</h2>
+                <span class="section-count mac">{{ frame.mac_address }}</span>
+            </div>
+
+            <div class="log-meta">
+                <span class="label">Last seen</span>
+                <span>{{ frame.last_seen or "never" }}</span>
+            </div>
+
+            {% if logs %}
+            <pre class="logs-box">{{ logs }}</pre>
+            {% else %}
+            <p class="logs-empty">No logs received from this frame yet.</p>
+            {% endif %}
+        </section>
+    </div>
 </body>
 </html>
