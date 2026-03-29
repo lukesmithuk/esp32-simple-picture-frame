@@ -117,7 +117,7 @@
                     {% for f in frames %}
                     <tr>
                         <td data-label="Device"><span class="mac">{{ f.mac_address }}</span></td>
-                        <td data-label="Last Seen"><span class="last-seen">{{ f.last_seen or "—" }}</span></td>
+                        <td data-label="Last Seen"><span class="last-seen" data-utc="{{ f.last_seen or '' }}">{{ f.last_seen or "—" }}</span></td>
                         <td data-label="Battery">
                             {% if f.battery_percent is not none %}
                             <span class="battery">
@@ -173,13 +173,42 @@
             else alert("Delete failed");
         }
 
-        /* Drag-and-drop highlight */
+        /* Drag-and-drop upload */
         var zone = document.getElementById('dropZone');
+        var fileInput = zone.querySelector('input[type="file"]');
+
         ['dragenter','dragover'].forEach(function(e) {
             zone.addEventListener(e, function(ev) { ev.preventDefault(); zone.classList.add('dragover'); });
         });
-        ['dragleave','drop'].forEach(function(e) {
+        ['dragleave'].forEach(function(e) {
             zone.addEventListener(e, function() { zone.classList.remove('dragover'); });
+        });
+
+        zone.addEventListener('drop', function(ev) {
+            ev.preventDefault();
+            zone.classList.remove('dragover');
+            var files = ev.dataTransfer.files;
+            if (!files.length) return;
+
+            var form = new FormData();
+            form.append('api_key', '{{ api_key }}');
+            for (var i = 0; i < files.length; i++) form.append('files', files[i]);
+
+            document.getElementById('fileName').textContent = 'Uploading ' + files.length + ' file' + (files.length > 1 ? 's' : '') + '…';
+            zone.classList.add('uploading');
+
+            fetch('/api/upload', { method: 'POST', body: form })
+                .then(function(r) { if (r.redirected) window.location.href = r.url; else location.reload(); })
+                .catch(function() { alert('Upload failed'); zone.classList.remove('uploading'); });
+        });
+
+        /* Convert UTC timestamps to local time */
+        document.querySelectorAll('[data-utc]').forEach(function(el) {
+            var utc = el.getAttribute('data-utc');
+            if (!utc) return;
+            var d = new Date(utc);
+            if (isNaN(d)) return;
+            el.textContent = d.toLocaleString();
         });
     </script>
 </body>

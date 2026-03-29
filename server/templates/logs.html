@@ -24,7 +24,7 @@
 
             <div class="log-meta">
                 <span class="label">Last seen</span>
-                <span>{{ frame.last_seen or "never" }}</span>
+                <span class="last-seen" data-utc="{{ frame.last_seen or '' }}">{{ frame.last_seen or "never" }}</span>
             </div>
 
             {% if logs %}
@@ -34,5 +34,15 @@
             {% endif %}
         </section>
     </div>
+
+    <script>
+        document.querySelectorAll('[data-utc]').forEach(function(el) {
+            var utc = el.getAttribute('data-utc');
+            if (!utc) return;
+            var d = new Date(utc);
+            if (isNaN(d)) return;
+            el.textContent = d.toLocaleString();
+        });
+    </script>
 </body>
 </html>
