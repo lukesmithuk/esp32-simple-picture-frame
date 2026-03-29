@@ -17,7 +17,7 @@
   --border-subtle: #1f2230;
   --radius: 8px;
   --radius-sm: 4px;
-  --font-body: 'DM Sans', system-ui, -apple-system, sans-serif;
+  --font-body: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
   --shadow-card: 0 1px 3px rgba(0,0,0,.3), 0 0 0 1px var(--border-subtle);
   --transition: 180ms ease;
@@ -650,28 +650,3 @@ body {
   .gallery-grid { grid-template-columns: repeat(auto-fill, minmax(145px, 1fr)); }
 }
 
-/* ── Font Loading ───────────────────────────────────────────────────── */
-
-@font-face {
-  font-family: 'DM Sans';
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url('https://fonts.gstatic.com/s/dmsans/v15/rP2Hp2ywxg089UriCZOIHTWEBlw.woff2') format('woff2');
-}
-
-@font-face {
-  font-family: 'DM Sans';
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-  src: url('https://fonts.gstatic.com/s/dmsans/v15/rP2Hp2ywxg089UriCZOIHTWEBlw.woff2') format('woff2');
-}
-
-@font-face {
-  font-family: 'DM Sans';
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url('https://fonts.gstatic.com/s/dmsans/v15/rP2Hp2ywxg089UriCZOIHTWEBlw.woff2') format('woff2');
-}

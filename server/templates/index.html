@@ -61,7 +61,7 @@
                          onerror="this.style.background='var(--bg-input)'">
                     <div class="card-info">
                         <span class="card-name" title="{{ img.filename }}">{{ img.filename }}</span>
-                        <button class="btn btn-danger" onclick="deleteImage({{ img.id }}, '{{ img.filename }}')">Delete</button>
+                        <button class="btn btn-danger" data-id="{{ img.id }}" data-name="{{ img.filename }}">Delete</button>
                     </div>
                 </div>
                 {% else %}
@@ -163,7 +163,11 @@
             else el.textContent = input.files.length + ' files selected';
         }
 
-        async function deleteImage(id, name) {
+        document.querySelector('.gallery-grid').addEventListener('click', async function(ev) {
+            var btn = ev.target.closest('[data-id]');
+            if (!btn) return;
+            var id = btn.getAttribute('data-id');
+            var name = btn.getAttribute('data-name');
             if (!confirm("Delete " + name + "?")) return;
             var r = await fetch("/api/images/" + id, {
                 method: "DELETE",
@@ -171,7 +175,7 @@
             });
             if (r.ok) location.reload();
             else alert("Delete failed");
-        }
+        });
 
         /* Drag-and-drop upload */
         var zone = document.getElementById('dropZone');
@@ -187,18 +191,26 @@
         zone.addEventListener('drop', function(ev) {
             ev.preventDefault();
             zone.classList.remove('dragover');
-            var files = ev.dataTransfer.files;
-            if (!files.length) return;
+            var allowed = ['image/jpeg', 'image/png', 'image/webp'];
+            var valid = [];
+            for (var i = 0; i < ev.dataTransfer.files.length; i++) {
+                if (allowed.indexOf(ev.dataTransfer.files[i].type) !== -1) valid.push(ev.dataTransfer.files[i]);
+            }
+            if (!valid.length) { alert('Only JPEG, PNG, and WebP images are accepted.'); return; }
 
             var form = new FormData();
             form.append('api_key', '{{ api_key }}');
-            for (var i = 0; i < files.length; i++) form.append('files', files[i]);
+            for (var i = 0; i < valid.length; i++) form.append('files', valid[i]);
 
-            document.getElementById('fileName').textContent = 'Uploading ' + files.length + ' file' + (files.length > 1 ? 's' : '') + '…';
+            document.getElementById('fileName').textContent = 'Uploading ' + valid.length + ' file' + (valid.length > 1 ? 's' : '') + '…';
             zone.classList.add('uploading');
 
             fetch('/api/upload', { method: 'POST', body: form })
-                .then(function(r) { if (r.redirected) window.location.href = r.url; else location.reload(); })
+                .then(function(r) {
+                    if (r.ok && r.redirected) window.location.href = r.url;
+                    else if (r.ok) location.reload();
+                    else { alert('Upload failed (' + r.status + ')'); zone.classList.remove('uploading'); }
+                })
                 .catch(function() { alert('Upload failed'); zone.classList.remove('uploading'); });
         });
 
