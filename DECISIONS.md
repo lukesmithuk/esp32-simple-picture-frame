@@ -258,3 +258,21 @@ any files not already in the SQLite database.
 **Rationale:** Allows the database to be safely deleted (e.g. for schema
 changes) without losing uploaded images. The image files persist on disk
 and are re-registered automatically on next startup.
+
+---
+
+## ADR-018 — Server-rendered web UI without build tools
+
+**Status:** Accepted
+**Date:** 2026-03-29
+
+**Decision:** The server web UI uses Jinja2 templates with vanilla CSS and
+JavaScript. No frontend framework (React, Vue), no build tools (Vite,
+webpack), no Node.js dependency.
+
+**Rationale:** The server's deployment target is a Raspberry Pi Zero 2W
+(512MB RAM). Adding Node.js for a build step would increase the install
+footprint and complexity for what is essentially a settings/upload page.
+Server-rendered templates keep the tarball self-contained — extract and
+run. System fonts are used instead of web fonts to avoid external CDN
+requests on networks without internet access.

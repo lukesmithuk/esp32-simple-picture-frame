@@ -4,88 +4,225 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Photo Frame Server</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/style.css?v={{ css_v }}">
 </head>
 <body>
-    <h1>Photo Frame Server</h1>
-
-    {% if uploaded %}
-    <div class="message">Uploaded {{ uploaded }} image{{ "s" if uploaded != 1 else "" }}.</div>
-    {% endif %}
-    {% if saved %}
-    <div class="message">Settings saved.</div>
-    {% endif %}
-
-    <section class="upload">
-        <h2>Upload Images</h2>
-        <form action="/api/upload" method="post" enctype="multipart/form-data"
-              onsubmit="if (!this.files.files.length) { alert('Please select one or more images first.'); return false; }">
-            <input type="hidden" name="api_key" value="{{ api_key }}">
-            <input type="file" name="files" multiple accept="image/jpeg,image/png,image/webp">
-            <button type="submit">Upload</button>
-        </form>
-    </section>
-
-    <section class="gallery">
-        <h2>Gallery ({{ images | length }} images)</h2>
-        <div class="grid">
-            {% for img in images %}
-            <div class="card">
-                <img src="/thumbs/{{ img.filename }}" alt="{{ img.filename }}"
-                     onerror="this.src='/static/placeholder.svg'">
-                <p>{{ img.filename }}</p>
-                <button onclick="deleteImage({{ img.id }}, '{{ img.filename }}')">Delete</button>
-            </div>
-            {% endfor %}
+    <header class="site-header">
+        <div class="inner">
+            <a href="/" class="site-title"><span class="icon"></span> Photo Frame</a>
+            <nav class="nav-links">
+                <a href="#gallery">Gallery</a>
+                <a href="#settings">Settings</a>
+                <a href="#frames">Frames</a>
+            </nav>
         </div>
-    </section>
+    </header>
 
-    <section class="settings">
-        <h2>Settings</h2>
-        <form action="/settings" method="post">
-            <span class="wake-label">Wake interval:</span>
-            <input type="number" name="wake_hours" value="{{ wake.hours }}" min="0" max="24" class="wake-num"> h &nbsp;
-            <input type="number" name="wake_minutes" value="{{ wake.minutes }}" min="0" max="59" class="wake-num"> m &nbsp;
-            <input type="number" name="wake_seconds" value="{{ wake.seconds }}" min="0" max="59" class="wake-num"> s &nbsp;
-            <button type="submit">Save</button>
-        </form>
-    </section>
+    <div class="container">
 
-    <section class="frames">
-        <h2>Frames</h2>
-        {% if frames %}
-        <table>
-            <tr>
-                <th>MAC</th><th>Last Seen</th><th>Battery</th>
-                <th>Charging</th><th>USB</th><th>Firmware</th><th>Logs</th>
-            </tr>
-            {% for f in frames %}
-            <tr>
-                <td>{{ f.mac_address }}</td>
-                <td>{{ f.last_seen or "never" }}</td>
-                <td>{% if f.battery_percent is not none %}{{ f.battery_percent }}% ({{ f.battery_mv }}mV){% else %}&mdash;{% endif %}</td>
-                <td>{{ "Yes" if f.charging else "No" }}</td>
-                <td>{{ "Yes" if f.usb_connected else "No" }}</td>
-                <td>{{ f.firmware_version or "&mdash;" }}</td>
-                <td><a href="/logs/{{ f.id }}">View</a></td>
-            </tr>
-            {% endfor %}
-        </table>
-        {% else %}
-        <p>No frames have connected yet.</p>
+        {% if uploaded %}
+        <div class="toast">Uploaded {{ uploaded }} image{{ "s" if uploaded != 1 else "" }}.</div>
         {% endif %}
-    </section>
+        {% if saved %}
+        <div class="toast">Settings saved.</div>
+        {% endif %}
+
+        <!-- Upload -->
+        <section class="section">
+            <div class="section-header">
+                <h2 class="section-title">Upload</h2>
+            </div>
+            <div class="upload-zone" id="dropZone">
+                <form action="/api/upload" method="post" enctype="multipart/form-data"
+                      onsubmit="if (!this.files.files.length) { alert('Please select one or more images first.'); return false; }">
+                    <input type="hidden" name="api_key" value="{{ api_key }}">
+                    <label class="file-label">
+                        <span>Choose images…</span>
+                        <input type="file" name="files" multiple accept="image/jpeg,image/png,image/webp"
+                               onchange="updateFileLabel(this)">
+                    </label>
+                    <span class="file-name" id="fileName">No files selected</span>
+                    <button type="submit" class="btn btn-primary">Upload</button>
+                </form>
+            </div>
+        </section>
+
+        <!-- Gallery -->
+        <section class="section" id="gallery">
+            <div class="section-header">
+                <h2 class="section-title">Gallery</h2>
+                <span class="section-count">{{ images | length }}</span>
+            </div>
+            <div class="gallery-grid">
+                {% for img in images %}
+                <div class="gallery-card">
+                    <img class="thumb" src="/thumbs/{{ img.filename }}" alt="{{ img.filename }}"
+                         loading="lazy"
+                         onerror="this.style.background='var(--bg-input)'">
+                    <div class="card-info">
+                        <span class="card-name" title="{{ img.filename }}">{{ img.filename }}</span>
+                        <button class="btn btn-danger" data-id="{{ img.id }}" data-name="{{ img.filename }}">Delete</button>
+                    </div>
+                </div>
+                {% else %}
+                <div class="gallery-empty">No images uploaded yet.</div>
+                {% endfor %}
+            </div>
+        </section>
+
+        <!-- Settings -->
+        <section class="section" id="settings">
+            <div class="section-header">
+                <h2 class="section-title">Settings</h2>
+            </div>
+            <div class="settings-card">
+                <form action="/settings" method="post" class="settings-form">
+                    <span class="settings-label">Wake interval</span>
+                    <div class="time-group">
+                        <input type="number" name="wake_hours" value="{{ wake.hours }}" min="0" max="24" class="time-input">
+                        <span class="time-unit">h</span>
+                    </div>
+                    <div class="time-group">
+                        <input type="number" name="wake_minutes" value="{{ wake.minutes }}" min="0" max="59" class="time-input">
+                        <span class="time-unit">m</span>
+                    </div>
+                    <div class="time-group">
+                        <input type="number" name="wake_seconds" value="{{ wake.seconds }}" min="0" max="59" class="time-input">
+                        <span class="time-unit">s</span>
+                    </div>
+                    <button type="submit" class="btn btn-save">Save</button>
+                </form>
+            </div>
+        </section>
+
+        <!-- Frames -->
+        <section class="section" id="frames">
+            <div class="section-header">
+                <h2 class="section-title">Frames</h2>
+                <span class="section-count">{{ frames | length }}</span>
+            </div>
+            {% if frames %}
+            <table class="frames-table">
+                <thead>
+                    <tr>
+                        <th>Device</th>
+                        <th>Last Seen</th>
+                        <th>Battery</th>
+                        <th>Status</th>
+                        <th>Firmware</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for f in frames %}
+                    <tr>
+                        <td data-label="Device"><span class="mac">{{ f.mac_address }}</span></td>
+                        <td data-label="Last Seen"><span class="last-seen" data-utc="{{ f.last_seen or '' }}">{{ f.last_seen or "—" }}</span></td>
+                        <td data-label="Battery">
+                            {% if f.battery_percent is not none %}
+                            <span class="battery">
+                                <span class="battery-bar">
+                                    <span class="battery-fill {{ 'high' if f.battery_percent > 50 else ('mid' if f.battery_percent > 20 else 'low') }}"
+                                          style="width: {{ f.battery_percent }}%"></span>
+                                </span>
+                                {{ f.battery_percent }}%
+                            </span>
+                            {% else %}—{% endif %}
+                        </td>
+                        <td data-label="Status">
+                            {% if f.charging %}
+                            <span class="badge badge-amber">⚡ Charging</span>
+                            {% elif f.usb_connected %}
+                            <span class="badge badge-blue">USB</span>
+                            {% else %}
+                            <span class="badge badge-muted">Battery</span>
+                            {% endif %}
+                        </td>
+                        <td data-label="Firmware">
+                            {% if f.firmware_version %}
+                            <span class="badge badge-muted">{{ f.firmware_version }}</span>
+                            {% else %}—{% endif %}
+                        </td>
+                        <td data-label=""><a href="/logs/{{ f.id }}" class="link">Logs →</a></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="frames-empty">No frames have connected yet.</p>
+            {% endif %}
+        </section>
+
+    </div>
 
     <script>
-        async function deleteImage(id, name) {
+        function updateFileLabel(input) {
+            var el = document.getElementById('fileName');
+            if (input.files.length === 0) el.textContent = 'No files selected';
+            else if (input.files.length === 1) el.textContent = input.files[0].name;
+            else el.textContent = input.files.length + ' files selected';
+        }
+
+        var gallery = document.querySelector('.gallery-grid');
+        gallery && gallery.addEventListener('click', async function(ev) {
+            var btn = ev.target.closest('[data-id]');
+            if (!btn) return;
+            var id = btn.getAttribute('data-id');
+            var name = btn.getAttribute('data-name');
             if (!confirm("Delete " + name + "?")) return;
-            const r = await fetch("/api/images/" + id, {
+            var r = await fetch("/api/images/" + id, {
                 method: "DELETE",
                 headers: {"X-API-Key": "{{ api_key }}"}
             });
             if (r.ok) location.reload();
             else alert("Delete failed");
-        }
+        });
+
+        /* Drag-and-drop upload */
+        var zone = document.getElementById('dropZone');
+        var fileInput = zone.querySelector('input[type="file"]');
+
+        ['dragenter','dragover'].forEach(function(e) {
+            zone.addEventListener(e, function(ev) { ev.preventDefault(); zone.classList.add('dragover'); });
+        });
+        ['dragleave'].forEach(function(e) {
+            zone.addEventListener(e, function() { zone.classList.remove('dragover'); });
+        });
+
+        zone.addEventListener('drop', function(ev) {
+            ev.preventDefault();
+            zone.classList.remove('dragover');
+            var allowed = ['image/jpeg', 'image/png', 'image/webp'];
+            var valid = [];
+            for (var i = 0; i < ev.dataTransfer.files.length; i++) {
+                if (allowed.indexOf(ev.dataTransfer.files[i].type) !== -1) valid.push(ev.dataTransfer.files[i]);
+            }
+            if (!valid.length) { alert('Only JPEG, PNG, and WebP images are accepted.'); return; }
+
+            var form = new FormData();
+            form.append('api_key', '{{ api_key }}');
+            for (var i = 0; i < valid.length; i++) form.append('files', valid[i]);
+
+            document.getElementById('fileName').textContent = 'Uploading ' + valid.length + ' file' + (valid.length > 1 ? 's' : '') + '…';
+            zone.classList.add('uploading');
+
+            fetch('/api/upload', { method: 'POST', body: form })
+                .then(function(r) {
+                    if (r.ok && r.redirected) window.location.href = r.url;
+                    else if (r.ok) location.reload();
+                    else { alert('Upload failed (' + r.status + ')'); zone.classList.remove('uploading'); }
+                })
+                .catch(function() { alert('Upload failed'); zone.classList.remove('uploading'); });
+        });
+
+        /* Convert UTC timestamps to local time */
+        document.querySelectorAll('[data-utc]').forEach(function(el) {
+            var utc = el.getAttribute('data-utc');
+            if (!utc) return;
+            var d = new Date(utc);
+            if (isNaN(d)) return;
+            el.textContent = d.toLocaleString();
+        });
     </script>
 </body>
 </html>

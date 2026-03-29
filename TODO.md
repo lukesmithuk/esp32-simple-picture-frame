@@ -44,10 +44,11 @@
 
 - [ ] HTTPS transport — TLS on ESP32-S3 (`esp_tls`) + certificate on Pi; would protect API key in transit
 - [ ] Session-based web UI auth — replace injected API key with login/session cookies for web UI actions
-- [ ] API key not visible in page source — currently injected into HTML template for JS delete handler
+- [ ] API key not visible in page source — removed from inline JS (now uses data attributes), but still in hidden form field for upload
 
 ## Build / Tooling
 
 - [x] FATFS LFN — fixed by deleting build/ and sdkconfig to regenerate from sdkconfig.defaults
 - [x] Server install package — setup.sh, uninstall.sh, GitHub Action release on tag push
 - [x] Pinned server dependencies — prevents version drift between platforms
+- [x] Web UI redesign — dark theme, responsive grid, battery indicators, drag-drop upload, local timezone display

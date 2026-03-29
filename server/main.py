@@ -30,6 +30,9 @@ app = FastAPI(lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=config.BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=config.BASE_DIR / "templates")
 
+_css_path = config.BASE_DIR / "static" / "style.css"
+_css_version = str(int(_css_path.stat().st_mtime)) if _css_path.exists() else "0"
+
 
 # ── Auth ─────────────────────────────────────────────────────────────────
 
@@ -212,6 +215,7 @@ async def index(request: Request, uploaded: int | None = None, saved: int | None
         "saved": saved,
         "wake": wake,
         "api_key": config.API_KEY,
+        "css_v": _css_version,
     })
 
 
@@ -243,6 +247,7 @@ async def frame_logs(request: Request, frame_id: int):
     return templates.TemplateResponse(request, "logs.html", context={
         "frame": frame,
         "logs": logs,
+        "css_v": _css_version,
     })
 
 
