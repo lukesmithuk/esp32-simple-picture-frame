@@ -1,6 +1,6 @@
 # TODO
 
-## Completed Phases
+## Completed
 
 - [x] Phase 1: Hardware bring-up & schematic analysis
 - [x] Phase 2: PMIC driver (AXP2101 via XPowersLib, bit-banged I2C)
@@ -12,6 +12,7 @@
 - [x] Phase 9: Production loop — log to file, image shuffle, configurable wake, full cycle verified
 - [x] WiFi photo retrieval — server + firmware, NTP sync, status/log push, web UI
 - [x] Phase 10: Power optimisation — PMIC sleep, battery status, DLDO mapping
+- [x] Build / Tooling — FATFS LFN, server install package, pinned deps, web UI redesign
 
 ## Phase 8 — Image Quality & Server Processing
 
@@ -25,13 +26,6 @@
 - [ ] Palette calibration — measure this specific panel's colours for more accurate dithering
 - [ ] S-curve tone mapping — perceptual tone curve before dither (aitjcize reference has this)
 
-## Phase 9 — Production Loop & Reliability
-
-- [x] Full cycle verified: alarm wake → image select → decode → dither → display → sleep
-- [x] Log to file — applog component: buffer early boot to RAM, tee ESP_LOG to SD card file
-- [x] Configurable wake interval — config component: key=value file from SD card
-- [x] Image shuffle without repeat — history file in image directory, cycle without repeats
-
 ## Phase 10 — Power Optimisation
 
 - [x] Map DLDO1/DLDO2 rails — confirmed unconnected on schematic
@@ -40,19 +34,24 @@
 - [x] Battery status — ADC enabled, voltage/percent/charge logged and pushed to server
 - [ ] Low-battery warning — display message on EPD when battery critically low
 
+## Phase 11 — Multiple Frame Support
+
+- [ ] Frame naming — assign friendly names in the web UI instead of MAC addresses
+- [ ] Per-frame galleries — assign different image pools to different frames
+- [ ] Per-frame wake interval — different schedules per frame (currently global)
+- [ ] Frame grouping — tag frames (e.g. "living room", "office") for batch management
+
 ## Security
 
 - [ ] HTTPS transport — TLS on ESP32-S3 (`esp_tls`) + certificate on Pi; would protect API key in transit
 - [ ] Session-based web UI auth — replace injected API key with login/session cookies for web UI actions
 - [ ] API key not visible in page source — removed from inline JS (now uses data attributes), but still in hidden form field for upload
+- [ ] Limit log upload body size — `/api/logs` reads full request without size cap; add 64KB limit or use uvicorn `--limit-request-body`
+- [ ] Reject default API key — refuse to start or warn loudly if key is "changeme"
+- [ ] Remove API key from database — stored unnecessarily in frames table; remove column or hash it
+- [ ] Constant-time key comparison — use `hmac.compare_digest()` instead of `!=` for API key checks
+- [ ] Sanitize upload filenames — strip special characters, limit length
 
 ## Web UI
 
 - [ ] Live updates — auto-refresh frames table and gallery (polling or SSE) so the dashboard stays current without manual reload
-
-## Build / Tooling
-
-- [x] FATFS LFN — fixed by deleting build/ and sdkconfig to regenerate from sdkconfig.defaults
-- [x] Server install package — setup.sh, uninstall.sh, GitHub Action release on tag push
-- [x] Pinned server dependencies — prevents version drift between platforms
-- [x] Web UI redesign — dark theme, responsive grid, battery indicators, drag-drop upload, local timezone display
