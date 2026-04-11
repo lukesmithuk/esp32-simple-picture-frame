@@ -57,16 +57,17 @@ python3 flash.py --timeout 30
 
 ### SD Card Setup
 
-Create `/sdcard/config.txt`:
+See `sdcard/config.txt.example` for a full reference. Minimum setup:
+
+1. Copy `sdcard/config.txt.example` to your SD card as `config.txt` and edit it
+2. Create an `images/` directory on the SD card with at least one baseline JPEG as a fallback (used when WiFi or the server is unavailable)
 
 ```
-wifi_ssid=YourNetwork
-wifi_password=YourPassword
-server_url=http://192.168.1.50:8080
-server_api_key=yourkey
+/sdcard/
+  config.txt
+  images/
+    fallback.jpg      ← at least one image recommended
 ```
-
-Put fallback JPEG images in `/sdcard/images/`.
 
 ## Configuration
 

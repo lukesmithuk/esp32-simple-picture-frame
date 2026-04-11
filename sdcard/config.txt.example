@@ -1,0 +1,28 @@
+# Picture Frame Configuration
+#
+# Copy this file to your SD card as /sdcard/config.txt
+# All keys are optional — defaults shown in comments
+#
+# SD card layout:
+#   /sdcard/config.txt          — this file
+#   /sdcard/images/             — fallback JPEG images (used when WiFi unavailable)
+#   /sdcard/system.log          — auto-created log file
+#
+# Put at least one baseline JPEG in /sdcard/images/ as a fallback
+# in case WiFi or the server is unavailable.
+
+# Wake interval — how often to change the image
+wake_interval_hours=1
+wake_interval_minutes=0
+wake_interval_seconds=0
+
+# WiFi — if wifi_ssid is absent, WiFi is skipped (SD card only mode)
+#wifi_ssid=YourNetwork
+#wifi_password=YourPassword
+
+# Photo server — requires WiFi
+#server_url=http://192.168.1.50:8080
+#server_api_key=your-api-key-here
+
+# Log file rotation threshold in KB (default: 256)
+#log_max_size_kb=256
