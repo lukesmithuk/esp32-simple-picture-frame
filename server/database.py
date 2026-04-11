@@ -77,16 +77,23 @@ class Database:
             logger.info("Migrated: added wake interval columns to frames table")
 
     async def _migrate_assign_images(self):
-        """Assign any unassigned images to all existing frames."""
+        """One-time migration: assign existing images to all frames.
+        Only runs if the migration hasn't been done yet (tracked via settings)."""
+        migrated = await self.get_setting("migration_assign_images_done")
+        if migrated:
+            return
+
         cursor = await self.db.execute(
             "SELECT id FROM images WHERE id NOT IN (SELECT DISTINCT image_id FROM frame_images)"
         )
         unassigned = [row["id"] for row in await cursor.fetchall()]
         if not unassigned:
+            await self.set_setting("migration_assign_images_done", "1")
             return
 
         frames = await self.list_frames()
         if not frames:
+            await self.set_setting("migration_assign_images_done", "1")
             return
 
         for image_id in unassigned:
@@ -96,6 +103,7 @@ class Database:
                     (frame["id"], image_id),
                 )
         await self.db.commit()
+        await self.set_setting("migration_assign_images_done", "1")
         logger.info(f"Migrated: assigned {len(unassigned)} image(s) to {len(frames)} frame(s)")
 
     async def close(self):
