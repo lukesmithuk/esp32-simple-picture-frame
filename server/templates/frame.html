@@ -7,15 +7,7 @@
     <link rel="stylesheet" href="/static/style.css?v={{ css_v }}">
 </head>
 <body>
-    <header class="site-header">
-        <div class="inner">
-            <a href="/" class="site-title"><span class="icon"></span> Photo Frame</a>
-            <nav class="nav-links">
-                <a href="/gallery">Gallery</a>
-                <a href="/#settings">Settings</a>
-            </nav>
-        </div>
-    </header>
+    {% include "nav.html" %}
 
     <div class="container">
         <a href="/" class="back-link">← Back to dashboard</a>

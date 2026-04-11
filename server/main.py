@@ -34,6 +34,12 @@ _css_path = config.BASE_DIR / "static" / "style.css"
 _css_version = str(int(_css_path.stat().st_mtime)) if _css_path.exists() else "0"
 
 
+async def _nav_context() -> dict:
+    """Common context for all templates (nav bar frames list, css version)."""
+    frames = await db.list_frames()
+    return {"nav_frames": frames, "css_v": _css_version}
+
+
 # ── Auth ─────────────────────────────────────────────────────────────────
 
 async def verify_api_key(x_api_key: str = Header(None)):
@@ -219,11 +225,12 @@ async def index(request: Request, saved: int | None = None):
         images = await db.get_frame_images(frame["id"])
         frame["image_count"] = len(images)
     wake = await db.get_wake_interval()
+    nav = await _nav_context()
     return templates.TemplateResponse(request, "index.html", context={
+        **nav,
         "frames": frames,
         "wake": wake,
         "saved": saved,
-        "css_v": _css_version,
     })
 
 
@@ -237,13 +244,14 @@ async def gallery(request: Request, uploaded: int | None = None):
     assignments = {}
     for img in images:
         assignments[img["id"]] = await db.get_image_assignments(img["id"])
+    nav = await _nav_context()
     return templates.TemplateResponse(request, "gallery.html", context={
+        **nav,
         "images": images,
         "frames": frames,
         "assignments": assignments,
         "uploaded": uploaded,
         "api_key": config.API_KEY,
-        "css_v": _css_version,
     })
 
 
@@ -258,14 +266,15 @@ async def frame_detail(request: Request, frame_id: int, saved: int | None = None
     logs = await db.get_logs(frame_id)
     frame_wake = await db.get_frame_wake_interval(frame_id)
     global_wake = await db.get_wake_interval()
+    nav = await _nav_context()
     return templates.TemplateResponse(request, "frame.html", context={
+        **nav,
         "frame": frame,
         "images": images,
         "logs": logs,
         "frame_wake": frame_wake,
         "global_wake": global_wake,
         "saved": saved,
-        "css_v": _css_version,
     })
 
 
@@ -351,10 +360,11 @@ async def frame_logs(request: Request, frame_id: int):
     if not frame:
         raise HTTPException(status_code=404, detail="Frame not found")
     logs = await db.get_logs(frame_id)
+    nav = await _nav_context()
     return templates.TemplateResponse(request, "logs.html", context={
+        **nav,
         "frame": frame,
         "logs": logs,
-        "css_v": _css_version,
     })
 
 

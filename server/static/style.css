@@ -651,6 +651,55 @@ body {
   .gallery-grid { grid-template-columns: repeat(auto-fill, minmax(145px, 1fr)); }
 }
 
+/* ── Nav dropdown ────────────────────────────────────────────────────── */
+
+.nav-dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+.nav-dropdown-toggle {
+  cursor: pointer;
+}
+
+.nav-dropdown-menu {
+  display: none;
+  position: absolute;
+  top: 100%;
+  right: 0;
+  min-width: 200px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 12px rgba(0,0,0,.4);
+  padding: 0.25rem 0;
+  z-index: 100;
+  margin-top: 0.5rem;
+}
+
+.nav-dropdown:hover .nav-dropdown-menu {
+  display: block;
+}
+
+.nav-dropdown-menu a {
+  display: block;
+  padding: 0.5rem 0.75rem;
+  color: var(--text-primary);
+  text-decoration: none;
+  font-size: 0.85rem;
+}
+
+.nav-dropdown-menu a:hover {
+  background: var(--bg-card-hover);
+}
+
+.nav-dropdown-empty {
+  display: block;
+  padding: 0.5rem 0.75rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
 /* ── Frame cards (dashboard) ─────────────────────────────────────────── */
 
 .frames-grid {

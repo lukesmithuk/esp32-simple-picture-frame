@@ -1,0 +1,22 @@
+<header class="site-header">
+    <div class="inner">
+        <a href="/" class="site-title"><span class="icon"></span> Photo Frame</a>
+        <nav class="nav-links">
+            <a href="/">Dashboard</a>
+            <a href="/gallery">Gallery</a>
+            <div class="nav-dropdown">
+                <a href="#" class="nav-dropdown-toggle">Frames ▾</a>
+                <div class="nav-dropdown-menu">
+                    {% if nav_frames %}
+                    {% for f in nav_frames %}
+                    <a href="/frames/{{ f.id }}">{{ f.name or f.mac_address }}</a>
+                    {% endfor %}
+                    {% else %}
+                    <span class="nav-dropdown-empty">No frames yet</span>
+                    {% endif %}
+                </div>
+            </div>
+            <a href="/#settings">Settings</a>
+        </nav>
+    </div>
+</header>
