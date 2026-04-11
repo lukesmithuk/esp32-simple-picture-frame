@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ frame.name or frame.mac_address }} — Photo Frame Server</title>
+    <link rel="stylesheet" href="/static/style.css?v={{ css_v }}">
+</head>
+<body>
+    <header class="site-header">
+        <div class="inner">
+            <a href="/" class="site-title"><span class="icon"></span> Photo Frame</a>
+            <nav class="nav-links">
+                <a href="/gallery">Gallery</a>
+                <a href="/#settings">Settings</a>
+            </nav>
+        </div>
+    </header>
+
+    <div class="container">
+        <a href="/" class="back-link">← Back to dashboard</a>
+
+        {% if saved %}
+        <div class="toast">Settings saved.</div>
+        {% endif %}
+
+        <!-- Frame Info + Settings -->
+        <section class="section">
+            <div class="section-header">
+                <h2 class="section-title">{{ frame.name or "Unnamed Frame" }}</h2>
+                <span class="section-count mac">{{ frame.mac_address }}</span>
+            </div>
+
+            <div class="frame-detail-grid">
+                <!-- Status -->
+                <div class="detail-card">
+                    <h3 class="detail-title">Status</h3>
+                    <div class="detail-stats">
+                        {% if frame.battery_percent is not none %}
+                        <div class="frame-stat">
+                            <span class="stat-label">Battery</span>
+                            <span class="stat-value">
+                                <span class="battery">
+                                    <span class="battery-bar">
+                                        <span class="battery-fill {{ 'high' if frame.battery_percent > 50 else ('mid' if frame.battery_percent > 20 else 'low') }}"
+                                              style="width: {{ frame.battery_percent }}%"></span>
+                                    </span>
+                                    {{ frame.battery_percent }}% ({{ frame.battery_mv }}mV)
+                                </span>
+                            </span>
+                        </div>
+                        {% endif %}
+                        <div class="frame-stat">
+                            <span class="stat-label">Power</span>
+                            <span class="stat-value">
+                                {% if frame.charging %}
+                                <span class="badge badge-amber">⚡ Charging</span>
+                                {% elif frame.usb_connected %}
+                                <span class="badge badge-blue">USB</span>
+                                {% else %}
+                                <span class="badge badge-muted">Battery</span>
+                                {% endif %}
+                            </span>
+                        </div>
+                        <div class="frame-stat">
+                            <span class="stat-label">Last seen</span>
+                            <span class="stat-value last-seen" data-utc="{{ frame.last_seen or '' }}">{{ frame.last_seen or "never" }}</span>
+                        </div>
+                        {% if frame.firmware_version %}
+                        <div class="frame-stat">
+                            <span class="stat-label">Firmware</span>
+                            <span class="stat-value"><span class="badge badge-muted">{{ frame.firmware_version }}</span></span>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Settings -->
+                <div class="detail-card">
+                    <h3 class="detail-title">Settings</h3>
+                    <form action="/frames/{{ frame.id }}/settings" method="post">
+                        <div class="form-group">
+                            <label class="settings-label">Name</label>
+                            <input type="text" name="name" value="{{ frame.name or '' }}" placeholder="e.g. Living Room"
+                                   class="text-input">
+                        </div>
+
+                        <div class="form-group">
+                            <label class="settings-label">
+                                <input type="checkbox" name="use_custom_wake"
+                                       {{ "checked" if frame_wake else "" }}
+                                       onchange="toggleWakeInputs(this)">
+                                Custom wake interval
+                            </label>
+                            <div class="wake-inputs {{ '' if frame_wake else 'disabled' }}" id="wakeInputs">
+                                <div class="time-group">
+                                    <input type="number" name="wake_hours"
+                                           value="{{ frame_wake.hours if frame_wake else global_wake.hours }}"
+                                           min="0" max="720" class="time-input">
+                                    <span class="time-unit">h</span>
+                                </div>
+                                <div class="time-group">
+                                    <input type="number" name="wake_minutes"
+                                           value="{{ frame_wake.minutes if frame_wake else global_wake.minutes }}"
+                                           min="0" max="59" class="time-input">
+                                    <span class="time-unit">m</span>
+                                </div>
+                                <div class="time-group">
+                                    <input type="number" name="wake_seconds"
+                                           value="{{ frame_wake.seconds if frame_wake else global_wake.seconds }}"
+                                           min="0" max="59" class="time-input">
+                                    <span class="time-unit">s</span>
+                                </div>
+                            </div>
+                            {% if not frame_wake %}
+                            <p class="settings-hint">Using global default: {{ global_wake.hours }}h {{ global_wake.minutes }}m {{ global_wake.seconds }}s</p>
+                            {% endif %}
+                        </div>
+
+                        <button type="submit" class="btn btn-save">Save</button>
+                    </form>
+                </div>
+            </div>
+        </section>
+
+        <!-- Frame Gallery -->
+        <section class="section">
+            <div class="section-header">
+                <h2 class="section-title">Assigned Images</h2>
+                <span class="section-count">{{ images | length }}</span>
+            </div>
+            <div class="gallery-grid">
+                {% for img in images %}
+                <div class="gallery-card">
+                    <img class="thumb" src="/thumbs/{{ img.filename }}" alt="{{ img.filename }}"
+                         loading="lazy"
+                         onerror="this.style.background='var(--bg-input)'">
+                    <div class="card-info">
+                        <span class="card-name" title="{{ img.filename }}">{{ img.filename }}</span>
+                    </div>
+                </div>
+                {% else %}
+                <div class="gallery-empty">No images assigned to this frame. <a href="/gallery">Go to Gallery</a> to assign images.</div>
+                {% endfor %}
+            </div>
+        </section>
+
+        <!-- Logs -->
+        <section class="section">
+            <div class="section-header">
+                <h2 class="section-title">Recent Logs</h2>
+            </div>
+            {% if logs %}
+            <pre class="logs-box">{{ logs[-2000:] }}</pre>
+            <a href="/logs/{{ frame.id }}" class="link">View full logs →</a>
+            {% else %}
+            <p class="logs-empty">No logs received from this frame yet.</p>
+            {% endif %}
+        </section>
+
+    </div>
+
+    <script>
+        function toggleWakeInputs(checkbox) {
+            var inputs = document.getElementById('wakeInputs');
+            if (checkbox.checked) inputs.classList.remove('disabled');
+            else inputs.classList.add('disabled');
+        }
+
+        /* Convert UTC timestamps to local time */
+        document.querySelectorAll('[data-utc]').forEach(function(el) {
+            var utc = el.getAttribute('data-utc');
+            if (!utc) return;
+            var d = new Date(utc);
+            if (isNaN(d)) return;
+            el.textContent = d.toLocaleString();
+        });
+    </script>
+</body>
+</html>

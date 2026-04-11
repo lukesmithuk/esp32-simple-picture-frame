@@ -76,7 +76,10 @@ async def test_api_next_returns_image():
     from database import Database
     tdb = Database(config.DB_PATH)
     await tdb.init()
-    await tdb.add_image("test.jpg")
+    image_id = await tdb.add_image("test.jpg")
+    # Create frame and assign the image to it.
+    frame_id = await tdb.get_or_create_frame("AA:BB:CC:DD:EE:FF", config.API_KEY)
+    await tdb.assign_image_to_frame(image_id, frame_id)
     await tdb.close()
 
     async with AsyncClient(transport=transport, base_url="http://test") as client:

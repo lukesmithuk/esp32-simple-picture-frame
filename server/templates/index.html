@@ -11,73 +11,86 @@
         <div class="inner">
             <a href="/" class="site-title"><span class="icon"></span> Photo Frame</a>
             <nav class="nav-links">
-                <a href="#gallery">Gallery</a>
+                <a href="/gallery">Gallery</a>
                 <a href="#settings">Settings</a>
-                <a href="#frames">Frames</a>
             </nav>
         </div>
     </header>
 
     <div class="container">
 
-        {% if uploaded %}
-        <div class="toast">Uploaded {{ uploaded }} image{{ "s" if uploaded != 1 else "" }}.</div>
-        {% endif %}
         {% if saved %}
         <div class="toast">Settings saved.</div>
         {% endif %}
 
-        <!-- Upload -->
-        <section class="section">
+        <!-- Frames -->
+        <section class="section" id="frames">
             <div class="section-header">
-                <h2 class="section-title">Upload</h2>
+                <h2 class="section-title">Frames</h2>
+                <span class="section-count">{{ frames | length }}</span>
             </div>
-            <div class="upload-zone" id="dropZone">
-                <form action="/api/upload" method="post" enctype="multipart/form-data"
-                      onsubmit="if (!this.files.files.length) { alert('Please select one or more images first.'); return false; }">
-                    <input type="hidden" name="api_key" value="{{ api_key }}">
-                    <label class="file-label">
-                        <span>Choose images…</span>
-                        <input type="file" name="files" multiple accept="image/jpeg,image/png,image/webp"
-                               onchange="updateFileLabel(this)">
-                    </label>
-                    <span class="file-name" id="fileName">No files selected</span>
-                    <button type="submit" class="btn btn-primary">Upload</button>
-                </form>
-            </div>
-        </section>
-
-        <!-- Gallery -->
-        <section class="section" id="gallery">
-            <div class="section-header">
-                <h2 class="section-title">Gallery</h2>
-                <span class="section-count">{{ images | length }}</span>
-            </div>
-            <div class="gallery-grid">
-                {% for img in images %}
-                <div class="gallery-card">
-                    <img class="thumb" src="/thumbs/{{ img.filename }}" alt="{{ img.filename }}"
-                         loading="lazy"
-                         onerror="this.style.background='var(--bg-input)'">
-                    <div class="card-info">
-                        <span class="card-name" title="{{ img.filename }}">{{ img.filename }}</span>
-                        <button class="btn btn-danger" data-id="{{ img.id }}" data-name="{{ img.filename }}">Delete</button>
+            {% if frames %}
+            <div class="frames-grid">
+                {% for f in frames %}
+                <a href="/frames/{{ f.id }}" class="frame-card">
+                    <div class="frame-card-header">
+                        <span class="frame-name">{{ f.name or f.mac_address }}</span>
+                        {% if f.charging %}
+                        <span class="badge badge-amber">⚡ Charging</span>
+                        {% elif f.usb_connected %}
+                        <span class="badge badge-blue">USB</span>
+                        {% else %}
+                        <span class="badge badge-muted">Battery</span>
+                        {% endif %}
                     </div>
-                </div>
-                {% else %}
-                <div class="gallery-empty">No images uploaded yet.</div>
+                    <div class="frame-card-body">
+                        {% if f.battery_percent is not none %}
+                        <div class="frame-stat">
+                            <span class="battery">
+                                <span class="battery-bar">
+                                    <span class="battery-fill {{ 'high' if f.battery_percent > 50 else ('mid' if f.battery_percent > 20 else 'low') }}"
+                                          style="width: {{ f.battery_percent }}%"></span>
+                                </span>
+                                {{ f.battery_percent }}%
+                            </span>
+                        </div>
+                        {% endif %}
+                        <div class="frame-stat">
+                            <span class="stat-label">Images</span>
+                            <span class="stat-value">{{ f.image_count }}</span>
+                        </div>
+                        <div class="frame-stat">
+                            <span class="stat-label">Last seen</span>
+                            <span class="stat-value last-seen" data-utc="{{ f.last_seen or '' }}">{{ f.last_seen or "never" }}</span>
+                        </div>
+                        {% if f.firmware_version %}
+                        <div class="frame-stat">
+                            <span class="stat-label">Firmware</span>
+                            <span class="stat-value"><span class="badge badge-muted">{{ f.firmware_version }}</span></span>
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% if f.name %}
+                    <div class="frame-card-footer">
+                        <span class="mac">{{ f.mac_address }}</span>
+                    </div>
+                    {% endif %}
+                </a>
                 {% endfor %}
             </div>
+            {% else %}
+            <p class="frames-empty">No frames have connected yet. Configure a frame with your server URL and it will appear here automatically.</p>
+            {% endif %}
         </section>
 
-        <!-- Settings -->
+        <!-- Global Settings -->
         <section class="section" id="settings">
             <div class="section-header">
-                <h2 class="section-title">Settings</h2>
+                <h2 class="section-title">Global Settings</h2>
             </div>
             <div class="settings-card">
                 <form action="/settings" method="post" class="settings-form">
-                    <span class="settings-label">Wake interval</span>
+                    <span class="settings-label">Default wake interval</span>
                     <div class="time-group">
                         <input type="number" name="wake_hours" value="{{ wake.hours }}" min="0" max="24" class="time-input">
                         <span class="time-unit">h</span>
@@ -92,129 +105,13 @@
                     </div>
                     <button type="submit" class="btn btn-save">Save</button>
                 </form>
+                <p class="settings-hint">Applies to frames without a custom wake interval.</p>
             </div>
-        </section>
-
-        <!-- Frames -->
-        <section class="section" id="frames">
-            <div class="section-header">
-                <h2 class="section-title">Frames</h2>
-                <span class="section-count">{{ frames | length }}</span>
-            </div>
-            {% if frames %}
-            <table class="frames-table">
-                <thead>
-                    <tr>
-                        <th>Device</th>
-                        <th>Last Seen</th>
-                        <th>Battery</th>
-                        <th>Status</th>
-                        <th>Firmware</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for f in frames %}
-                    <tr>
-                        <td data-label="Device"><span class="mac">{{ f.mac_address }}</span></td>
-                        <td data-label="Last Seen"><span class="last-seen" data-utc="{{ f.last_seen or '' }}">{{ f.last_seen or "—" }}</span></td>
-                        <td data-label="Battery">
-                            {% if f.battery_percent is not none %}
-                            <span class="battery">
-                                <span class="battery-bar">
-                                    <span class="battery-fill {{ 'high' if f.battery_percent > 50 else ('mid' if f.battery_percent > 20 else 'low') }}"
-                                          style="width: {{ f.battery_percent }}%"></span>
-                                </span>
-                                {{ f.battery_percent }}%
-                            </span>
-                            {% else %}—{% endif %}
-                        </td>
-                        <td data-label="Status">
-                            {% if f.charging %}
-                            <span class="badge badge-amber">⚡ Charging</span>
-                            {% elif f.usb_connected %}
-                            <span class="badge badge-blue">USB</span>
-                            {% else %}
-                            <span class="badge badge-muted">Battery</span>
-                            {% endif %}
-                        </td>
-                        <td data-label="Firmware">
-                            {% if f.firmware_version %}
-                            <span class="badge badge-muted">{{ f.firmware_version }}</span>
-                            {% else %}—{% endif %}
-                        </td>
-                        <td data-label=""><a href="/logs/{{ f.id }}" class="link">Logs →</a></td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            {% else %}
-            <p class="frames-empty">No frames have connected yet.</p>
-            {% endif %}
         </section>
 
     </div>
 
     <script>
-        function updateFileLabel(input) {
-            var el = document.getElementById('fileName');
-            if (input.files.length === 0) el.textContent = 'No files selected';
-            else if (input.files.length === 1) el.textContent = input.files[0].name;
-            else el.textContent = input.files.length + ' files selected';
-        }
-
-        var gallery = document.querySelector('.gallery-grid');
-        gallery && gallery.addEventListener('click', async function(ev) {
-            var btn = ev.target.closest('[data-id]');
-            if (!btn) return;
-            var id = btn.getAttribute('data-id');
-            var name = btn.getAttribute('data-name');
-            if (!confirm("Delete " + name + "?")) return;
-            var r = await fetch("/api/images/" + id, {
-                method: "DELETE",
-                headers: {"X-API-Key": "{{ api_key }}"}
-            });
-            if (r.ok) location.reload();
-            else alert("Delete failed");
-        });
-
-        /* Drag-and-drop upload */
-        var zone = document.getElementById('dropZone');
-        var fileInput = zone.querySelector('input[type="file"]');
-
-        ['dragenter','dragover'].forEach(function(e) {
-            zone.addEventListener(e, function(ev) { ev.preventDefault(); zone.classList.add('dragover'); });
-        });
-        ['dragleave'].forEach(function(e) {
-            zone.addEventListener(e, function() { zone.classList.remove('dragover'); });
-        });
-
-        zone.addEventListener('drop', function(ev) {
-            ev.preventDefault();
-            zone.classList.remove('dragover');
-            var allowed = ['image/jpeg', 'image/png', 'image/webp'];
-            var valid = [];
-            for (var i = 0; i < ev.dataTransfer.files.length; i++) {
-                if (allowed.indexOf(ev.dataTransfer.files[i].type) !== -1) valid.push(ev.dataTransfer.files[i]);
-            }
-            if (!valid.length) { alert('Only JPEG, PNG, and WebP images are accepted.'); return; }
-
-            var form = new FormData();
-            form.append('api_key', '{{ api_key }}');
-            for (var i = 0; i < valid.length; i++) form.append('files', valid[i]);
-
-            document.getElementById('fileName').textContent = 'Uploading ' + valid.length + ' file' + (valid.length > 1 ? 's' : '') + '…';
-            zone.classList.add('uploading');
-
-            fetch('/api/upload', { method: 'POST', body: form })
-                .then(function(r) {
-                    if (r.ok && r.redirected) window.location.href = r.url;
-                    else if (r.ok) location.reload();
-                    else { alert('Upload failed (' + r.status + ')'); zone.classList.remove('uploading'); }
-                })
-                .catch(function() { alert('Upload failed'); zone.classList.remove('uploading'); });
-        });
-
         /* Convert UTC timestamps to local time */
         document.querySelectorAll('[data-utc]').forEach(function(el) {
             var utc = el.getAttribute('data-utc');

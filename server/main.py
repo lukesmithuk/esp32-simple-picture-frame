@@ -65,7 +65,11 @@ async def api_next(frame_id: int = Depends(get_frame_id)):
         return Response(status_code=204)
 
     data = image_path.read_bytes()
-    wake = await db.get_wake_interval()
+
+    # Per-frame wake interval, falling back to global.
+    wake = await db.get_frame_wake_interval(frame_id)
+    if wake is None:
+        wake = await db.get_wake_interval()
 
     return Response(
         content=data,
@@ -161,11 +165,13 @@ async def upload_images(
             counter += 1
 
         img.save(dest, "JPEG", quality=95, progressive=False)
-        await db.add_image(dest.name)
+        image_id = await db.add_image(dest.name)
         generate_thumbnail(dest, config.THUMBS_DIR / dest.name)
+        # Assign to all existing frames by default.
+        await db.assign_image_to_all_frames(image_id)
         uploaded += 1
 
-    return RedirectResponse(url=f"/?uploaded={uploaded}", status_code=303)
+    return RedirectResponse(url=f"/gallery?uploaded={uploaded}", status_code=303)
 
 
 @app.delete("/api/images/{image_id}")
@@ -203,21 +209,120 @@ async def serve_thumb(filename: str):
     raise HTTPException(status_code=404)
 
 
+# ── Web UI: Dashboard ──────────────────────────────────────────────────
+
 @app.get("/")
-async def index(request: Request, uploaded: int | None = None, saved: int | None = None):
-    images = await db.list_images()
+async def index(request: Request, saved: int | None = None):
     frames = await db.list_frames()
+    # Add image count per frame.
+    for frame in frames:
+        images = await db.get_frame_images(frame["id"])
+        frame["image_count"] = len(images)
     wake = await db.get_wake_interval()
     return templates.TemplateResponse(request, "index.html", context={
+        "frames": frames,
+        "wake": wake,
+        "saved": saved,
+        "css_v": _css_version,
+    })
+
+
+# ── Web UI: Shared Gallery ──────────────────────────────────────────────
+
+@app.get("/gallery")
+async def gallery(request: Request, uploaded: int | None = None):
+    images = await db.list_images()
+    frames = await db.list_frames()
+    # Build assignment map: image_id → [frame_ids]
+    assignments = {}
+    for img in images:
+        assignments[img["id"]] = await db.get_image_assignments(img["id"])
+    return templates.TemplateResponse(request, "gallery.html", context={
         "images": images,
         "frames": frames,
+        "assignments": assignments,
         "uploaded": uploaded,
-        "saved": saved,
-        "wake": wake,
         "api_key": config.API_KEY,
         "css_v": _css_version,
     })
 
+
+# ── Web UI: Frame Detail Page ──────────────────────────────────────────
+
+@app.get("/frames/{frame_id}")
+async def frame_detail(request: Request, frame_id: int, saved: int | None = None):
+    frame = await db.get_frame(frame_id)
+    if not frame:
+        raise HTTPException(status_code=404, detail="Frame not found")
+    images = await db.get_frame_images(frame_id)
+    logs = await db.get_logs(frame_id)
+    frame_wake = await db.get_frame_wake_interval(frame_id)
+    global_wake = await db.get_wake_interval()
+    return templates.TemplateResponse(request, "frame.html", context={
+        "frame": frame,
+        "images": images,
+        "logs": logs,
+        "frame_wake": frame_wake,
+        "global_wake": global_wake,
+        "saved": saved,
+        "css_v": _css_version,
+    })
+
+
+@app.post("/frames/{frame_id}/settings")
+async def save_frame_settings(frame_id: int, request: Request):
+    frame = await db.get_frame(frame_id)
+    if not frame:
+        raise HTTPException(status_code=404, detail="Frame not found")
+
+    form = await request.form()
+
+    # Update name.
+    name = form.get("name", "").strip()
+    await db.update_frame_name(frame_id, name or None)
+
+    # Update per-frame wake interval.
+    use_custom = form.get("use_custom_wake") == "on"
+    if use_custom:
+        try:
+            hours = int(form.get("wake_hours", 1))
+            minutes = int(form.get("wake_minutes", 0))
+            seconds = int(form.get("wake_seconds", 0))
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="Invalid integer value")
+        if not (0 <= hours <= 720 and 0 <= minutes <= 59 and 0 <= seconds <= 59):
+            raise HTTPException(status_code=400, detail="Values out of range")
+        await db.update_frame_wake_interval(frame_id, hours, minutes, seconds)
+    else:
+        await db.update_frame_wake_interval(frame_id, None, None, None)
+
+    return RedirectResponse(url=f"/frames/{frame_id}?saved=1", status_code=303)
+
+
+# ── Web UI: Image assignment ───────────────────────────────────────────
+
+@app.post("/api/images/{image_id}/assign")
+async def assign_image(image_id: int, request: Request, _: str = Depends(verify_api_key)):
+    """Set which frames an image is assigned to."""
+    body = await request.json()
+    frame_ids = body.get("frame_ids", [])
+
+    image = await db.get_image_by_id(image_id)
+    if not image:
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    # Remove all current assignments, then add the new ones.
+    await db.db.execute("DELETE FROM frame_images WHERE image_id = ?", (image_id,))
+    for fid in frame_ids:
+        await db.db.execute(
+            "INSERT OR IGNORE INTO frame_images (frame_id, image_id) VALUES (?, ?)",
+            (fid, image_id),
+        )
+    await db.db.commit()
+    return {"ok": True}
+
+
+# ── Web UI: Global Settings ────────────────────────────────────────────
 
 @app.post("/settings")
 async def save_settings(request: Request):
@@ -237,6 +342,8 @@ async def save_settings(request: Request):
     await db.set_wake_interval(hours, minutes, seconds)
     return RedirectResponse(url="/?saved=1", status_code=303)
 
+
+# ── Web UI: Logs ────────────────────────────────────────────────────────
 
 @app.get("/logs/{frame_id}")
 async def frame_logs(request: Request, frame_id: int):
