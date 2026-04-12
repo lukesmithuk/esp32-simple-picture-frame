@@ -27,6 +27,7 @@ static const char *image_exts[] = {"jpg", "jpeg", NULL};
 #define SYSTEM_LOG      SDCARD_MOUNT_POINT "/system.log"
 #define CONFIG_PATH     SDCARD_MOUNT_POINT "/config.txt"
 #define LOG_OFFSET_PATH SDCARD_MOUNT_POINT "/.log_offset"
+#define WIFI_IMAGE_RETRIES 3
 
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
 
@@ -133,39 +134,65 @@ static esp_err_t try_wifi_fetch(uint8_t **img_buf, size_t *img_size)
     const char *server_url = config_get_str("server_url", "");
     const char *api_key    = config_get_str("server_api_key", "");
 
-    esp_err_t ret = wifi_fetch_init(wifi_ssid, wifi_pass);
-    if (ret != ESP_OK) {
-        ESP_LOGW(TAG, "WiFi connect failed");
-        return ret;
+    esp_err_t ret;
+    bool logs_uploaded = false;
+    bool status_pushed = false;
+
+    for (int attempt = 1; attempt <= WIFI_IMAGE_RETRIES; attempt++) {
+        /* Connect WiFi. */
+        ret = wifi_fetch_init(wifi_ssid, wifi_pass);
+        if (ret != ESP_OK) {
+            ESP_LOGW(TAG, "WiFi connect failed (attempt %d/%d)",
+                     attempt, WIFI_IMAGE_RETRIES);
+            if (attempt < WIFI_IMAGE_RETRIES) {
+                vTaskDelay(pdMS_TO_TICKS(2000));
+                continue;
+            }
+            return ret;
+        }
+
+        /* Upload logs and start capture (only on first successful connect). */
+        if (!logs_uploaded) {
+            wifi_fetch_post_logs(server_url, api_key, SYSTEM_LOG, LOG_OFFSET_PATH);
+            int log_max_kb = config_get_int("log_max_size_kb", 256);
+            applog_start(SYSTEM_LOG, log_max_kb);
+            logs_uploaded = true;
+        }
+
+        /* Push frame status (only once). */
+        if (!status_pushed) {
+            int batt_mv = board_battery_voltage_mv();
+            wifi_fetch_status_t status = {
+                .battery_connected = board_battery_is_connected() && batt_mv > 1000,
+                .battery_percent   = board_battery_percent(),
+                .battery_mv        = batt_mv,
+                .charging          = board_battery_is_charging(),
+                .usb_connected     = board_usb_is_connected(),
+                .sd_free_kb        = 0,  /* TODO: implement sd_free_kb */
+                .firmware_version  = esp_app_get_description()->version,
+            };
+            wifi_fetch_post_status(server_url, api_key, &status);
+            status_pushed = true;
+        }
+
+        /* Fetch next image. */
+        ret = wifi_fetch_image(server_url, api_key, img_buf, img_size);
+        if (ret == ESP_OK) {
+            ESP_LOGI(TAG, "Got %zu bytes from server (attempt %d)", *img_size, attempt);
+            wifi_fetch_deinit();
+            return ESP_OK;
+        }
+
+        ESP_LOGW(TAG, "Image fetch failed (attempt %d/%d): %s",
+                 attempt, WIFI_IMAGE_RETRIES, esp_err_to_name(ret));
+
+        /* Disconnect before retrying. */
+        wifi_fetch_deinit();
+        if (attempt < WIFI_IMAGE_RETRIES) {
+            vTaskDelay(pdMS_TO_TICKS(2000));
+        }
     }
 
-    /* Upload logs BEFORE applog_start (which does rolling). */
-    wifi_fetch_post_logs(server_url, api_key, SYSTEM_LOG, LOG_OFFSET_PATH);
-
-    /* Start log capture (with rolling) now that logs are uploaded. */
-    int log_max_kb = config_get_int("log_max_size_kb", 256);
-    applog_start(SYSTEM_LOG, log_max_kb);
-
-    /* Push frame status. */
-    int batt_mv = board_battery_voltage_mv();
-    wifi_fetch_status_t status = {
-        .battery_connected = board_battery_is_connected() && batt_mv > 1000,
-        .battery_percent   = board_battery_percent(),
-        .battery_mv        = batt_mv,
-        .charging          = board_battery_is_charging(),
-        .usb_connected     = board_usb_is_connected(),
-        .sd_free_kb        = 0,  /* TODO: implement sd_free_kb */
-        .firmware_version  = esp_app_get_description()->version,
-    };
-    wifi_fetch_post_status(server_url, api_key, &status);
-
-    /* Fetch next image. */
-    ret = wifi_fetch_image(server_url, api_key, img_buf, img_size);
-    wifi_fetch_deinit();
-
-    if (ret == ESP_OK) {
-        ESP_LOGI(TAG, "Got %zu bytes from server", *img_size);
-    }
     return ret;
 }
 
