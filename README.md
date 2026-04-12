@@ -7,12 +7,13 @@ Includes a self-hosted photo server with a web UI for uploading and managing ima
 ## Features
 
 - **WiFi photo retrieval** from a self-hosted server with SD card fallback
+- **Multi-frame support** — name frames, assign different images to each, set per-frame wake intervals
 - **Floyd-Steinberg dithering** with measured palette values for accurate colour reproduction
 - **Dynamic range compression** optimised for e-paper's limited tonal range
 - **NTP time sync** updates the RTC on each WiFi connection
 - **Image shuffle** cycles through all photos before repeating
 - **Remote monitoring** — battery status, firmware version, and logs viewable in the web UI
-- **Configurable wake interval** from the web UI or SD card config file
+- **Configurable wake interval** from the web UI or SD card config file, per-frame or global
 - **Deep sleep** between updates for ultra-low power consumption
 
 ## Hardware

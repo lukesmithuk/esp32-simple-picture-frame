@@ -87,6 +87,7 @@ app_main (main/)
 | 9 | Production loop & reliability | ✅ Done (2026-03-14) |
 | — | WiFi photo retrieval (server + firmware) | ✅ Done (2026-03-17) |
 | 10 | Power optimisation (PMIC sleep, battery) | ✅ Done (2026-03-17) |
+| 11 | Multi-frame (naming, galleries, wake interval) | ✅ Done (2026-04-12) |
 
 ---
 

@@ -13,6 +13,7 @@
 - [x] WiFi photo retrieval — server + firmware, NTP sync, status/log push, web UI
 - [x] Phase 10: Power optimisation — PMIC sleep, battery status, DLDO mapping
 - [x] Build / Tooling — FATFS LFN, server install package, pinned deps, web UI redesign
+- [x] Phase 11: Multi-frame — frame naming, per-frame galleries, per-frame wake interval
 
 ## Phase 8 — Image Quality & Server Processing
 
@@ -33,13 +34,6 @@
 - [ ] Measure deep-sleep current consumption
 - [x] Battery status — ADC enabled, voltage/percent/charge logged and pushed to server
 - [ ] Low-battery warning — display message on EPD when battery critically low
-
-## Phase 11 — Multiple Frame Support
-
-- [ ] Frame naming — assign friendly names in the web UI instead of MAC addresses
-- [ ] Per-frame galleries — assign different image pools to different frames
-- [ ] Per-frame wake interval — different schedules per frame (currently global)
-- [ ] Frame grouping — tag frames (e.g. "living room", "office") for batch management
 
 ## Security
 

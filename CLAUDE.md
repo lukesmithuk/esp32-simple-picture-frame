@@ -82,10 +82,11 @@ cd server && source venv/bin/activate && python -m pytest tests/ -v
 - **Backend**: FastAPI + Jinja2 templates, SQLite (aiosqlite), Pillow for image processing
 - **Frontend**: Server-rendered HTML, vanilla CSS/JS (no build tools, no Node.js)
 - **Deployment target**: Raspberry Pi Zero 2W (512MB RAM) — keep dependencies lightweight
-- **Templates**: `server/templates/` (index.html, logs.html)
+- **Templates**: `server/templates/` (index.html, gallery.html, frame.html, logs.html, nav.html)
 - **Static assets**: `server/static/` (style.css)
 - **Database**: `server/photoframe.db` (SQLite, auto-created)
 - **Timestamps**: Stored as UTC ISO 8601 with `+00:00` suffix, converted to local time in browser
+- **Multi-frame**: Per-frame image assignment via `frame_images` table, per-frame wake interval, frame naming
 
 ## Component Map
 
