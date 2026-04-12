@@ -165,3 +165,18 @@ async def test_delete_image_api():
                                 headers={"X-API-Key": config.API_KEY})
     assert r.status_code == 200
     assert not (config.IMAGES_DIR / "del.jpg").exists()
+
+
+# ── Settings ───────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_zero_wake_interval_rejected():
+    """Global wake interval of 0h 0m 0s should be rejected."""
+    async with AsyncClient(transport=transport, base_url="http://test",
+                           follow_redirects=False) as client:
+        r = await client.post("/settings", data={
+            "wake_hours": "0",
+            "wake_minutes": "0",
+            "wake_seconds": "0",
+        })
+    assert r.status_code == 400

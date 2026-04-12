@@ -179,6 +179,18 @@ class Database:
             )
         await self.db.commit()
 
+    async def set_image_assignments(self, image_id: int, frame_ids: list[int]):
+        """Replace all frame assignments for an image."""
+        await self.db.execute(
+            "DELETE FROM frame_images WHERE image_id = ?", (image_id,)
+        )
+        for fid in frame_ids:
+            await self.db.execute(
+                "INSERT OR IGNORE INTO frame_images (frame_id, image_id) VALUES (?, ?)",
+                (fid, image_id),
+            )
+        await self.db.commit()
+
     async def get_image_assignments(self, image_id: int) -> list[int]:
         """Return list of frame_ids this image is assigned to."""
         cursor = await self.db.execute(

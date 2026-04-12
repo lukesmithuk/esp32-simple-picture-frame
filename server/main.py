@@ -301,6 +301,8 @@ async def save_frame_settings(frame_id: int, request: Request):
             raise HTTPException(status_code=400, detail="Invalid integer value")
         if not (0 <= hours <= 720 and 0 <= minutes <= 59 and 0 <= seconds <= 59):
             raise HTTPException(status_code=400, detail="Values out of range")
+        if hours == 0 and minutes == 0 and seconds == 0:
+            raise HTTPException(status_code=400, detail="Wake interval cannot be zero")
         await db.update_frame_wake_interval(frame_id, hours, minutes, seconds)
     else:
         await db.update_frame_wake_interval(frame_id, None, None, None)
@@ -320,14 +322,7 @@ async def assign_image(image_id: int, request: Request, _: str = Depends(verify_
     if not image:
         raise HTTPException(status_code=404, detail="Image not found")
 
-    # Remove all current assignments, then add the new ones.
-    await db.db.execute("DELETE FROM frame_images WHERE image_id = ?", (image_id,))
-    for fid in frame_ids:
-        await db.db.execute(
-            "INSERT OR IGNORE INTO frame_images (frame_id, image_id) VALUES (?, ?)",
-            (fid, image_id),
-        )
-    await db.db.commit()
+    await db.set_image_assignments(image_id, frame_ids)
     return {"ok": True}
 
 
@@ -348,6 +343,8 @@ async def save_settings(request: Request):
         raise HTTPException(status_code=400, detail="Minutes must be 0-59")
     if not (0 <= seconds <= 59):
         raise HTTPException(status_code=400, detail="Seconds must be 0-59")
+    if hours == 0 and minutes == 0 and seconds == 0:
+        raise HTTPException(status_code=400, detail="Wake interval cannot be zero")
     await db.set_wake_interval(hours, minutes, seconds)
     return RedirectResponse(url="/?saved=1", status_code=303)
 

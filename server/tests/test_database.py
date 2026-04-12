@@ -107,6 +107,31 @@ async def test_frame_image_assignment(db):
 
 
 @pytest.mark.asyncio
+async def test_set_image_assignments(db):
+    """Test bulk replacement of frame assignments for an image."""
+    id_a = await db.add_image("a.jpg")
+    frame1 = await db.get_or_create_frame("AA:AA:AA:AA:AA:AA", "testkey")
+    frame2 = await db.get_or_create_frame("BB:BB:BB:BB:BB:BB", "testkey")
+
+    # Assign to frame1 only.
+    await db.set_image_assignments(id_a, [frame1])
+    assert await db.get_image_assignments(id_a) == [frame1]
+
+    # Reassign to frame2 only — frame1 should be removed.
+    await db.set_image_assignments(id_a, [frame2])
+    assert await db.get_image_assignments(id_a) == [frame2]
+
+    # Assign to both.
+    await db.set_image_assignments(id_a, [frame1, frame2])
+    assignments = await db.get_image_assignments(id_a)
+    assert set(assignments) == {frame1, frame2}
+
+    # Clear all assignments.
+    await db.set_image_assignments(id_a, [])
+    assert await db.get_image_assignments(id_a) == []
+
+
+@pytest.mark.asyncio
 async def test_frame_wake_interval(db):
     """Test per-frame wake interval override."""
     frame_id = await db.get_or_create_frame("AA:BB:CC:DD:EE:FF", "testkey")
