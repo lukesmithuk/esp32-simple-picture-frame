@@ -153,6 +153,12 @@ esp_err_t wifi_fetch_init(const char *ssid, const char *password)
         return ESP_ERR_TIMEOUT;
     }
 
+    /* Log signal strength. */
+    wifi_ap_record_t ap_info;
+    if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
+        ESP_LOGI(TAG, "WiFi RSSI: %d dBm", ap_info.rssi);
+    }
+
     sync_ntp();
     return ESP_OK;
 }
