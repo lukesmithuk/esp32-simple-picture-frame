@@ -76,7 +76,10 @@ async def test_api_next_returns_image():
     from database import Database
     tdb = Database(config.DB_PATH)
     await tdb.init()
-    await tdb.add_image("test.jpg")
+    image_id = await tdb.add_image("test.jpg")
+    # Create frame and assign the image to it.
+    frame_id = await tdb.get_or_create_frame("AA:BB:CC:DD:EE:FF", config.API_KEY)
+    await tdb.assign_image_to_frame(image_id, frame_id)
     await tdb.close()
 
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -162,3 +165,18 @@ async def test_delete_image_api():
                                 headers={"X-API-Key": config.API_KEY})
     assert r.status_code == 200
     assert not (config.IMAGES_DIR / "del.jpg").exists()
+
+
+# ── Settings ───────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_zero_wake_interval_rejected():
+    """Global wake interval of 0h 0m 0s should be rejected."""
+    async with AsyncClient(transport=transport, base_url="http://test",
+                           follow_redirects=False) as client:
+        r = await client.post("/settings", data={
+            "wake_hours": "0",
+            "wake_minutes": "0",
+            "wake_seconds": "0",
+        })
+    assert r.status_code == 400

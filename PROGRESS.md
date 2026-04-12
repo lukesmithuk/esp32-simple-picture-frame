@@ -1,5 +1,22 @@
 # Progress Log
 
+## 2026-04-12 — Phase 11: Multi-Frame Support
+
+- **Frame naming**: editable friendly name per frame via settings page
+- **Per-frame galleries**: `frame_images` join table, shared gallery with
+  per-frame assignment checkboxes, shuffle only serves assigned images
+- **Per-frame wake interval**: custom h/m/s per frame, falls back to global default
+- **Dashboard**: frame status cards with image count, battery, last seen
+- **Shared gallery**: all images with upload and per-frame assignment
+- **Frame detail page**: name, wake interval, assigned images, logs
+- **Shared nav**: extracted to `nav.html` partial with frames dropdown
+- **DB migration**: auto-adds `frame_images` table and wake columns
+- **Batch queries**: replaced N+1 with single-query methods for dashboard/gallery
+- **Validation**: zero wake interval rejected with error toast
+- 22 tests passing (8 new). No firmware changes needed.
+
+---
+
 ## 2026-03-29 — Web UI Redesign
 
 - **Dark observatory theme** replacing plain white UI — CSS custom properties,

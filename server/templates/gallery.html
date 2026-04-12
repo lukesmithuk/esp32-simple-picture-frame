@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gallery — Photo Frame Server</title>
+    <link rel="stylesheet" href="/static/style.css?v={{ css_v }}">
+</head>
+<body>
+    {% include "nav.html" %}
+
+    <div class="container">
+
+        {% if uploaded %}
+        <div class="toast">Uploaded {{ uploaded }} image{{ "s" if uploaded != 1 else "" }}.</div>
+        {% endif %}
+
+        <!-- Upload -->
+        <section class="section">
+            <div class="section-header">
+                <h2 class="section-title">Upload</h2>
+            </div>
+            <div class="upload-zone" id="dropZone">
+                <form action="/api/upload" method="post" enctype="multipart/form-data"
+                      onsubmit="if (!this.files.files.length) { alert('Please select one or more images first.'); return false; }">
+                    <input type="hidden" name="api_key" value="{{ api_key }}">
+                    <label class="file-label">
+                        <span>Choose images…</span>
+                        <input type="file" name="files" multiple accept="image/jpeg,image/png,image/webp"
+                               onchange="updateFileLabel(this)">
+                    </label>
+                    <span class="file-name" id="fileName">No files selected</span>
+                    <button type="submit" class="btn btn-primary">Upload</button>
+                </form>
+            </div>
+            <p class="settings-hint">Uploaded images are assigned to all frames by default.</p>
+        </section>
+
+        <!-- Gallery -->
+        <section class="section" id="gallery">
+            <div class="section-header">
+                <h2 class="section-title">All Images</h2>
+                <span class="section-count">{{ images | length }}</span>
+            </div>
+            <div class="gallery-grid">
+                {% for img in images %}
+                <div class="gallery-card">
+                    <img class="thumb" src="/thumbs/{{ img.filename }}" alt="{{ img.filename }}"
+                         loading="lazy"
+                         onerror="this.style.background='var(--bg-input)'">
+                    <div class="card-info">
+                        <span class="card-name" title="{{ img.filename }}">{{ img.filename }}</span>
+                        <!-- Frame assignment checkboxes -->
+                        {% if frames %}
+                        <div class="assign-frames" data-image-id="{{ img.id }}">
+                            {% for f in frames %}
+                            <label class="assign-label" title="{{ f.mac_address }}">
+                                <input type="checkbox" value="{{ f.id }}"
+                                       {{ "checked" if f.id in assignments.get(img.id, []) else "" }}
+                                       onchange="updateAssignment({{ img.id }})">
+                                {{ f.name or f.mac_address[:8] }}
+                            </label>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                        <button class="btn btn-danger" data-id="{{ img.id }}" data-name="{{ img.filename }}">Delete</button>
+                    </div>
+                </div>
+                {% else %}
+                <div class="gallery-empty">No images uploaded yet.</div>
+                {% endfor %}
+            </div>
+        </section>
+
+    </div>
+
+    <script>
+        function updateFileLabel(input) {
+            var el = document.getElementById('fileName');
+            if (input.files.length === 0) el.textContent = 'No files selected';
+            else if (input.files.length === 1) el.textContent = input.files[0].name;
+            else el.textContent = input.files.length + ' files selected';
+        }
+
+        /* Delete image */
+        var gallery = document.querySelector('.gallery-grid');
+        gallery && gallery.addEventListener('click', async function(ev) {
+            var btn = ev.target.closest('[data-id]');
+            if (!btn || btn.tagName !== 'BUTTON') return;
+            var id = btn.getAttribute('data-id');
+            var name = btn.getAttribute('data-name');
+            if (!confirm("Delete " + name + "?")) return;
+            var r = await fetch("/api/images/" + id, {
+                method: "DELETE",
+                headers: {"X-API-Key": "{{ api_key }}"}
+            });
+            if (r.ok) location.reload();
+            else alert("Delete failed");
+        });
+
+        /* Update frame assignment for an image */
+        async function updateAssignment(imageId) {
+            var container = document.querySelector('[data-image-id="' + imageId + '"]');
+            var checkboxes = container.querySelectorAll('input[type="checkbox"]');
+            var frameIds = [];
+            checkboxes.forEach(function(cb) {
+                if (cb.checked) frameIds.push(parseInt(cb.value));
+            });
+            var r = await fetch("/api/images/" + imageId + "/assign", {
+                method: "POST",
+                headers: {
+                    "X-API-Key": "{{ api_key }}",
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({frame_ids: frameIds})
+            });
+            if (!r.ok) alert("Assignment failed");
+        }
+
+        /* Drag-and-drop upload */
+        var zone = document.getElementById('dropZone');
+        if (zone) {
+            ['dragenter','dragover'].forEach(function(e) {
+                zone.addEventListener(e, function(ev) { ev.preventDefault(); zone.classList.add('dragover'); });
+            });
+            ['dragleave'].forEach(function(e) {
+                zone.addEventListener(e, function() { zone.classList.remove('dragover'); });
+            });
+
+            zone.addEventListener('drop', function(ev) {
+                ev.preventDefault();
+                zone.classList.remove('dragover');
+                var allowed = ['image/jpeg', 'image/png', 'image/webp'];
+                var valid = [];
+                for (var i = 0; i < ev.dataTransfer.files.length; i++) {
+                    if (allowed.indexOf(ev.dataTransfer.files[i].type) !== -1) valid.push(ev.dataTransfer.files[i]);
+                }
+                if (!valid.length) { alert('Only JPEG, PNG, and WebP images are accepted.'); return; }
+
+                var form = new FormData();
+                form.append('api_key', '{{ api_key }}');
+                for (var i = 0; i < valid.length; i++) form.append('files', valid[i]);
+
+                document.getElementById('fileName').textContent = 'Uploading ' + valid.length + ' file' + (valid.length > 1 ? 's' : '') + '…';
+                zone.classList.add('uploading');
+
+                fetch('/api/upload', { method: 'POST', body: form })
+                    .then(function(r) {
+                        if (r.ok && r.redirected) window.location.href = r.url;
+                        else if (r.ok) location.reload();
+                        else { alert('Upload failed (' + r.status + ')'); zone.classList.remove('uploading'); }
+                    })
+                    .catch(function() { alert('Upload failed'); zone.classList.remove('uploading'); });
+            });
+        }
+    </script>
+</body>
+</html>

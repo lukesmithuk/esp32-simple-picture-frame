@@ -49,8 +49,62 @@ class Database:
                 FOREIGN KEY (frame_id) REFERENCES frames(id),
                 FOREIGN KEY (image_id) REFERENCES images(id)
             );
+            CREATE TABLE IF NOT EXISTS frame_images (
+                frame_id INTEGER NOT NULL,
+                image_id INTEGER NOT NULL,
+                PRIMARY KEY (frame_id, image_id),
+                FOREIGN KEY (frame_id) REFERENCES frames(id),
+                FOREIGN KEY (image_id) REFERENCES images(id)
+            );
         """)
         await self.db.commit()
+
+        # Migration: add per-frame wake interval columns if missing.
+        await self._migrate_frame_wake_columns()
+
+        # Migration: assign unassigned images to all existing frames.
+        await self._migrate_assign_images()
+
+    async def _migrate_frame_wake_columns(self):
+        """Add wake_hours/minutes/seconds columns to frames if missing."""
+        cursor = await self.db.execute("PRAGMA table_info(frames)")
+        columns = {row["name"] for row in await cursor.fetchall()}
+        if "wake_hours" not in columns:
+            await self.db.execute("ALTER TABLE frames ADD COLUMN wake_hours INTEGER")
+            await self.db.execute("ALTER TABLE frames ADD COLUMN wake_minutes INTEGER")
+            await self.db.execute("ALTER TABLE frames ADD COLUMN wake_seconds INTEGER")
+            await self.db.commit()
+            logger.info("Migrated: added wake interval columns to frames table")
+
+    async def _migrate_assign_images(self):
+        """One-time migration: assign existing images to all frames.
+        Only runs if the migration hasn't been done yet (tracked via settings)."""
+        migrated = await self.get_setting("migration_assign_images_done")
+        if migrated:
+            return
+
+        cursor = await self.db.execute(
+            "SELECT id FROM images WHERE id NOT IN (SELECT DISTINCT image_id FROM frame_images)"
+        )
+        unassigned = [row["id"] for row in await cursor.fetchall()]
+        if not unassigned:
+            await self.set_setting("migration_assign_images_done", "1")
+            return
+
+        frames = await self.list_frames()
+        if not frames:
+            await self.set_setting("migration_assign_images_done", "1")
+            return
+
+        for image_id in unassigned:
+            for frame in frames:
+                await self.db.execute(
+                    "INSERT OR IGNORE INTO frame_images (frame_id, image_id) VALUES (?, ?)",
+                    (frame["id"], image_id),
+                )
+        await self.db.commit()
+        await self.set_setting("migration_assign_images_done", "1")
+        logger.info(f"Migrated: assigned {len(unassigned)} image(s) to {len(frames)} frame(s)")
 
     async def close(self):
         if self.db:
@@ -80,6 +134,7 @@ class Database:
         return cursor.lastrowid
 
     async def delete_image(self, image_id: int):
+        await self.db.execute("DELETE FROM frame_images WHERE image_id = ?", (image_id,))
         await self.db.execute("DELETE FROM history WHERE image_id = ?", (image_id,))
         await self.db.execute("DELETE FROM images WHERE id = ?", (image_id,))
         await self.db.commit()
@@ -97,6 +152,82 @@ class Database:
         )
         row = await cursor.fetchone()
         return dict(row) if row else None
+
+    # -- Frame-Image assignments --
+
+    async def assign_image_to_frame(self, image_id: int, frame_id: int):
+        await self.db.execute(
+            "INSERT OR IGNORE INTO frame_images (frame_id, image_id) VALUES (?, ?)",
+            (frame_id, image_id),
+        )
+        await self.db.commit()
+
+    async def unassign_image_from_frame(self, image_id: int, frame_id: int):
+        await self.db.execute(
+            "DELETE FROM frame_images WHERE frame_id = ? AND image_id = ?",
+            (frame_id, image_id),
+        )
+        await self.db.commit()
+
+    async def assign_image_to_all_frames(self, image_id: int):
+        """Assign an image to every known frame."""
+        frames = await self.list_frames()
+        for frame in frames:
+            await self.db.execute(
+                "INSERT OR IGNORE INTO frame_images (frame_id, image_id) VALUES (?, ?)",
+                (frame["id"], image_id),
+            )
+        await self.db.commit()
+
+    async def set_image_assignments(self, image_id: int, frame_ids: list[int]):
+        """Replace all frame assignments for an image."""
+        await self.db.execute(
+            "DELETE FROM frame_images WHERE image_id = ?", (image_id,)
+        )
+        for fid in frame_ids:
+            await self.db.execute(
+                "INSERT OR IGNORE INTO frame_images (frame_id, image_id) VALUES (?, ?)",
+                (fid, image_id),
+            )
+        await self.db.commit()
+
+    async def get_all_image_assignments(self) -> dict[int, list[int]]:
+        """Return {image_id: [frame_id, ...]} for all images in one query."""
+        cursor = await self.db.execute("SELECT image_id, frame_id FROM frame_images")
+        rows = await cursor.fetchall()
+        result: dict[int, list[int]] = {}
+        for row in rows:
+            result.setdefault(row["image_id"], []).append(row["frame_id"])
+        return result
+
+    async def get_frame_image_counts(self) -> dict[int, int]:
+        """Return {frame_id: count} for all frames in one query."""
+        cursor = await self.db.execute(
+            "SELECT frame_id, COUNT(*) as cnt FROM frame_images GROUP BY frame_id"
+        )
+        rows = await cursor.fetchall()
+        return {row["frame_id"]: row["cnt"] for row in rows}
+
+    async def get_image_assignments(self, image_id: int) -> list[int]:
+        """Return list of frame_ids this image is assigned to."""
+        cursor = await self.db.execute(
+            "SELECT frame_id FROM frame_images WHERE image_id = ?", (image_id,)
+        )
+        rows = await cursor.fetchall()
+        return [row["frame_id"] for row in rows]
+
+    async def get_frame_images(self, frame_id: int) -> list[dict]:
+        """Return images assigned to a specific frame."""
+        cursor = await self.db.execute(
+            """SELECT i.id, i.filename, i.uploaded_at
+               FROM images i
+               JOIN frame_images fi ON i.id = fi.image_id
+               WHERE fi.frame_id = ?
+               ORDER BY i.uploaded_at DESC""",
+            (frame_id,),
+        )
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
 
     # -- Frames --
 
@@ -129,6 +260,34 @@ class Database:
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
 
+    async def update_frame_name(self, frame_id: int, name: str):
+        await self.db.execute(
+            "UPDATE frames SET name = ? WHERE id = ?", (name, frame_id)
+        )
+        await self.db.commit()
+
+    async def update_frame_wake_interval(self, frame_id: int,
+                                          hours: int | None,
+                                          minutes: int | None,
+                                          seconds: int | None):
+        await self.db.execute(
+            """UPDATE frames SET wake_hours = ?, wake_minutes = ?, wake_seconds = ?
+               WHERE id = ?""",
+            (hours, minutes, seconds, frame_id),
+        )
+        await self.db.commit()
+
+    async def get_frame_wake_interval(self, frame_id: int) -> dict | None:
+        """Return per-frame wake interval, or None if not set."""
+        frame = await self.get_frame(frame_id)
+        if not frame or frame["wake_hours"] is None:
+            return None
+        return {
+            "hours": frame["wake_hours"],
+            "minutes": frame["wake_minutes"],
+            "seconds": frame["wake_seconds"],
+        }
+
     async def update_frame_status(self, frame_id: int, status: dict):
         now = datetime.now(timezone.utc).isoformat()
         await self.db.execute(
@@ -153,8 +312,7 @@ class Database:
 
     # -- Logs --
 
-    # Keep at most 512 KB of logs per frame to prevent unbounded growth.
-    _LOG_MAX_BYTES = 512 * 1024  # 524288
+    _LOG_MAX_BYTES = 512 * 1024
 
     async def append_logs(self, frame_id: int, text: str):
         await self.db.execute(
@@ -187,7 +345,7 @@ class Database:
         await self.db.commit()
 
     async def get_wake_interval(self) -> dict:
-        """Returns {hours, minutes, seconds}. Default: 1h 0m 0s."""
+        """Returns global {hours, minutes, seconds}. Default: 1h 0m 0s."""
         return {
             "hours": int(await self.get_setting("wake_interval_hours", "1")),
             "minutes": int(await self.get_setting("wake_interval_minutes", "0")),
@@ -202,26 +360,27 @@ class Database:
     # -- Shuffle --
 
     async def get_next_image(self, frame_id: int) -> dict | None:
-        all_images = await self.list_images()
-        if not all_images:
+        """Get next image assigned to this frame, with no-repeat shuffle."""
+        assigned = await self.get_frame_images(frame_id)
+        if not assigned:
             return None
 
-        all_ids = {img["id"] for img in all_images}
+        assigned_ids = {img["id"] for img in assigned}
 
         cursor = await self.db.execute(
             "SELECT image_id FROM history WHERE frame_id = ?", (frame_id,)
         )
         shown_rows = await cursor.fetchall()
-        shown_ids = {row["image_id"] for row in shown_rows} & all_ids
+        shown_ids = {row["image_id"] for row in shown_rows} & assigned_ids
 
-        candidates = [img for img in all_images if img["id"] not in shown_ids]
+        candidates = [img for img in assigned if img["id"] not in shown_ids]
 
         if not candidates:
             await self.db.execute(
                 "DELETE FROM history WHERE frame_id = ?", (frame_id,)
             )
             await self.db.commit()
-            candidates = all_images
+            candidates = assigned
 
         chosen = random.choice(candidates)
         now = datetime.now(timezone.utc).isoformat()

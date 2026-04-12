@@ -1,0 +1,41 @@
+<header class="site-header">
+    <div class="inner">
+        <a href="/" class="site-title"><span class="icon"></span> Photo Frame</a>
+        <nav class="nav-links">
+            <a href="/">Dashboard</a>
+            <a href="/gallery">Gallery</a>
+            <a href="#" id="framesToggle">Frames ▾</a>
+        </nav>
+    </div>
+</header>
+<div class="nav-dropdown-menu" id="framesMenu">
+    {% if nav_frames %}
+    {% for f in nav_frames %}
+    <a href="/frames/{{ f.id }}">{{ f.name or f.mac_address }}</a>
+    {% endfor %}
+    {% else %}
+    <span class="nav-dropdown-empty">No frames yet</span>
+    {% endif %}
+</div>
+<script>
+(function() {
+    var toggle = document.getElementById('framesToggle');
+    var menu = document.getElementById('framesMenu');
+    toggle.addEventListener('click', function(ev) {
+        ev.preventDefault();
+        if (menu.style.display === 'block') {
+            menu.style.display = 'none';
+            return;
+        }
+        var rect = toggle.getBoundingClientRect();
+        menu.style.top = rect.bottom + 4 + 'px';
+        menu.style.right = (window.innerWidth - rect.right) + 'px';
+        menu.style.display = 'block';
+    });
+    document.addEventListener('click', function(ev) {
+        if (ev.target !== toggle && !menu.contains(ev.target)) {
+            menu.style.display = 'none';
+        }
+    });
+})();
+</script>

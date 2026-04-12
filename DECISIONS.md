@@ -276,3 +276,40 @@ footprint and complexity for what is essentially a settings/upload page.
 Server-rendered templates keep the tarball self-contained — extract and
 run. System fonts are used instead of web fonts to avoid external CDN
 requests on networks without internet access.
+
+
+---
+
+## ADR-019 — Per-frame image assignment via shared gallery
+
+**Status:** Accepted
+**Date:** 2026-04-12
+
+**Decision:** Images are uploaded to a shared gallery and assigned to
+specific frames via a `frame_images` join table. Each image can be
+assigned to one or more frames. Frames only receive images assigned
+to them. Unassigned images return 204 (SD card fallback).
+
+**Rationale:** Considered three approaches: (a) per-image assignment
+checkboxes from shared gallery, (b) frame-scoped albums, (c) separate
+upload areas per frame. Option (a) was chosen for simplicity — one
+upload location with flexible assignment. New uploads are assigned to
+all frames by default so existing single-frame setups work unchanged.
+
+---
+
+## ADR-020 — Per-frame wake interval with global fallback
+
+**Status:** Accepted
+**Date:** 2026-04-12
+
+**Decision:** Each frame can have a custom wake interval (hours, minutes,
+seconds) stored as nullable columns on the `frames` table. If not set
+(NULL), the global wake interval from the `settings` table is used.
+The server sends the effective interval via response headers.
+
+**Rationale:** Multiple frames in different locations may need different
+update frequencies (e.g. a bedside frame updates hourly, a living room
+frame every 30 minutes). The nullable column approach avoids a separate
+table and makes the fallback logic simple: check frame columns first,
+then global settings.

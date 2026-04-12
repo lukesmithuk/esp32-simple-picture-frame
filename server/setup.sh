@@ -38,10 +38,13 @@ if ! python3 -m venv --help &>/dev/null; then
     exit 1
 fi
 
-# Check libjpeg-dev (needed to build Pillow)
-if ! dpkg -s libjpeg-dev &>/dev/null 2>&1; then
-    echo "Installing libjpeg-dev (required by Pillow)..."
-    sudo apt install -y libjpeg-dev
+# Check image libraries needed to build Pillow
+PILLOW_DEPS=""
+dpkg -s libjpeg-dev &>/dev/null 2>&1 || PILLOW_DEPS="$PILLOW_DEPS libjpeg-dev"
+dpkg -s libwebp-dev &>/dev/null 2>&1 || PILLOW_DEPS="$PILLOW_DEPS libwebp-dev"
+if [ -n "$PILLOW_DEPS" ]; then
+    echo "Installing image libraries (required by Pillow):$PILLOW_DEPS"
+    sudo apt install -y $PILLOW_DEPS
 fi
 
 # ── Virtual environment ──────────────────────────────────────────────────

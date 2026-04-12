@@ -35,11 +35,16 @@ async def test_delete_image(db):
 
 @pytest.mark.asyncio
 async def test_get_next_image_shuffles(db):
-    await db.add_image("a.jpg")
-    await db.add_image("b.jpg")
-    await db.add_image("c.jpg")
+    id_a = await db.add_image("a.jpg")
+    id_b = await db.add_image("b.jpg")
+    id_c = await db.add_image("c.jpg")
 
     frame_id = await db.get_or_create_frame("AA:BB:CC:DD:EE:FF", "testkey")
+    # Assign all images to this frame.
+    await db.assign_image_to_frame(id_a, frame_id)
+    await db.assign_image_to_frame(id_b, frame_id)
+    await db.assign_image_to_frame(id_c, frame_id)
+
     shown = set()
     for _ in range(3):
         img = await db.get_next_image(frame_id)
@@ -50,8 +55,9 @@ async def test_get_next_image_shuffles(db):
 
 @pytest.mark.asyncio
 async def test_get_next_image_resets_after_full_cycle(db):
-    await db.add_image("only.jpg")
+    image_id = await db.add_image("only.jpg")
     frame_id = await db.get_or_create_frame("AA:BB:CC:DD:EE:FF", "testkey")
+    await db.assign_image_to_frame(image_id, frame_id)
 
     img1 = await db.get_next_image(frame_id)
     assert img1["filename"] == "only.jpg"
@@ -62,10 +68,110 @@ async def test_get_next_image_resets_after_full_cycle(db):
 
 
 @pytest.mark.asyncio
+async def test_get_next_image_no_assigned_images(db):
+    """Frame with no assigned images returns None."""
+    await db.add_image("unassigned.jpg")
+    frame_id = await db.get_or_create_frame("AA:BB:CC:DD:EE:FF", "testkey")
+    # Don't assign the image to this frame.
+    img = await db.get_next_image(frame_id)
+    assert img is None
+
+
+@pytest.mark.asyncio
 async def test_get_next_image_empty_gallery(db):
     frame_id = await db.get_or_create_frame("AA:BB:CC:DD:EE:FF", "testkey")
     img = await db.get_next_image(frame_id)
     assert img is None
+
+
+@pytest.mark.asyncio
+async def test_frame_image_assignment(db):
+    """Test assign/unassign and per-frame image listing."""
+    id_a = await db.add_image("a.jpg")
+    id_b = await db.add_image("b.jpg")
+    frame1 = await db.get_or_create_frame("AA:AA:AA:AA:AA:AA", "testkey")
+    frame2 = await db.get_or_create_frame("BB:BB:BB:BB:BB:BB", "testkey")
+
+    await db.assign_image_to_frame(id_a, frame1)
+    await db.assign_image_to_frame(id_b, frame1)
+    await db.assign_image_to_frame(id_b, frame2)
+
+    frame1_images = await db.get_frame_images(frame1)
+    frame2_images = await db.get_frame_images(frame2)
+    assert len(frame1_images) == 2
+    assert len(frame2_images) == 1
+
+    await db.unassign_image_from_frame(id_b, frame1)
+    frame1_images = await db.get_frame_images(frame1)
+    assert len(frame1_images) == 1
+
+
+@pytest.mark.asyncio
+async def test_batch_assignment_queries(db):
+    """Test get_all_image_assignments and get_frame_image_counts."""
+    id_a = await db.add_image("a.jpg")
+    id_b = await db.add_image("b.jpg")
+    frame1 = await db.get_or_create_frame("AA:AA:AA:AA:AA:AA", "testkey")
+    frame2 = await db.get_or_create_frame("BB:BB:BB:BB:BB:BB", "testkey")
+
+    await db.assign_image_to_frame(id_a, frame1)
+    await db.assign_image_to_frame(id_b, frame1)
+    await db.assign_image_to_frame(id_b, frame2)
+
+    # get_all_image_assignments returns {image_id: [frame_ids]}
+    assignments = await db.get_all_image_assignments()
+    assert set(assignments[id_a]) == {frame1}
+    assert set(assignments[id_b]) == {frame1, frame2}
+
+    # get_frame_image_counts returns {frame_id: count}
+    counts = await db.get_frame_image_counts()
+    assert counts[frame1] == 2
+    assert counts[frame2] == 1
+
+
+@pytest.mark.asyncio
+async def test_set_image_assignments(db):
+    """Test bulk replacement of frame assignments for an image."""
+    id_a = await db.add_image("a.jpg")
+    frame1 = await db.get_or_create_frame("AA:AA:AA:AA:AA:AA", "testkey")
+    frame2 = await db.get_or_create_frame("BB:BB:BB:BB:BB:BB", "testkey")
+
+    # Assign to frame1 only.
+    await db.set_image_assignments(id_a, [frame1])
+    assert await db.get_image_assignments(id_a) == [frame1]
+
+    # Reassign to frame2 only — frame1 should be removed.
+    await db.set_image_assignments(id_a, [frame2])
+    assert await db.get_image_assignments(id_a) == [frame2]
+
+    # Assign to both.
+    await db.set_image_assignments(id_a, [frame1, frame2])
+    assignments = await db.get_image_assignments(id_a)
+    assert set(assignments) == {frame1, frame2}
+
+    # Clear all assignments.
+    await db.set_image_assignments(id_a, [])
+    assert await db.get_image_assignments(id_a) == []
+
+
+@pytest.mark.asyncio
+async def test_frame_wake_interval(db):
+    """Test per-frame wake interval override."""
+    frame_id = await db.get_or_create_frame("AA:BB:CC:DD:EE:FF", "testkey")
+
+    # No custom interval initially.
+    wake = await db.get_frame_wake_interval(frame_id)
+    assert wake is None
+
+    # Set custom interval.
+    await db.update_frame_wake_interval(frame_id, 2, 30, 0)
+    wake = await db.get_frame_wake_interval(frame_id)
+    assert wake == {"hours": 2, "minutes": 30, "seconds": 0}
+
+    # Clear custom interval.
+    await db.update_frame_wake_interval(frame_id, None, None, None)
+    wake = await db.get_frame_wake_interval(frame_id)
+    assert wake is None
 
 
 @pytest.mark.asyncio
