@@ -191,6 +191,23 @@ class Database:
             )
         await self.db.commit()
 
+    async def get_all_image_assignments(self) -> dict[int, list[int]]:
+        """Return {image_id: [frame_id, ...]} for all images in one query."""
+        cursor = await self.db.execute("SELECT image_id, frame_id FROM frame_images")
+        rows = await cursor.fetchall()
+        result: dict[int, list[int]] = {}
+        for row in rows:
+            result.setdefault(row["image_id"], []).append(row["frame_id"])
+        return result
+
+    async def get_frame_image_counts(self) -> dict[int, int]:
+        """Return {frame_id: count} for all frames in one query."""
+        cursor = await self.db.execute(
+            "SELECT frame_id, COUNT(*) as cnt FROM frame_images GROUP BY frame_id"
+        )
+        rows = await cursor.fetchall()
+        return {row["frame_id"]: row["cnt"] for row in rows}
+
     async def get_image_assignments(self, image_id: int) -> list[int]:
         """Return list of frame_ids this image is assigned to."""
         cursor = await self.db.execute(

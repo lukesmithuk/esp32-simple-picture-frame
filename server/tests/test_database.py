@@ -107,6 +107,29 @@ async def test_frame_image_assignment(db):
 
 
 @pytest.mark.asyncio
+async def test_batch_assignment_queries(db):
+    """Test get_all_image_assignments and get_frame_image_counts."""
+    id_a = await db.add_image("a.jpg")
+    id_b = await db.add_image("b.jpg")
+    frame1 = await db.get_or_create_frame("AA:AA:AA:AA:AA:AA", "testkey")
+    frame2 = await db.get_or_create_frame("BB:BB:BB:BB:BB:BB", "testkey")
+
+    await db.assign_image_to_frame(id_a, frame1)
+    await db.assign_image_to_frame(id_b, frame1)
+    await db.assign_image_to_frame(id_b, frame2)
+
+    # get_all_image_assignments returns {image_id: [frame_ids]}
+    assignments = await db.get_all_image_assignments()
+    assert set(assignments[id_a]) == {frame1}
+    assert set(assignments[id_b]) == {frame1, frame2}
+
+    # get_frame_image_counts returns {frame_id: count}
+    counts = await db.get_frame_image_counts()
+    assert counts[frame1] == 2
+    assert counts[frame2] == 1
+
+
+@pytest.mark.asyncio
 async def test_set_image_assignments(db):
     """Test bulk replacement of frame assignments for an image."""
     id_a = await db.add_image("a.jpg")

@@ -218,12 +218,12 @@ async def serve_thumb(filename: str):
 # ── Web UI: Dashboard ──────────────────────────────────────────────────
 
 @app.get("/")
-async def index(request: Request, saved: int | None = None):
+async def index(request: Request, saved: int | None = None, error: str | None = None):
     frames = await db.list_frames()
-    # Add image count per frame.
+    # Add image count per frame (single query).
+    counts = await db.get_frame_image_counts()
     for frame in frames:
-        images = await db.get_frame_images(frame["id"])
-        frame["image_count"] = len(images)
+        frame["image_count"] = counts.get(frame["id"], 0)
     wake = await db.get_wake_interval()
     nav = await _nav_context()
     return templates.TemplateResponse(request, "index.html", context={
@@ -231,6 +231,7 @@ async def index(request: Request, saved: int | None = None):
         "frames": frames,
         "wake": wake,
         "saved": saved,
+        "error": error,
     })
 
 
@@ -240,10 +241,8 @@ async def index(request: Request, saved: int | None = None):
 async def gallery(request: Request, uploaded: int | None = None):
     images = await db.list_images()
     frames = await db.list_frames()
-    # Build assignment map: image_id → [frame_ids]
-    assignments = {}
-    for img in images:
-        assignments[img["id"]] = await db.get_image_assignments(img["id"])
+    # Build assignment map: image_id → [frame_ids] (single query).
+    assignments = await db.get_all_image_assignments()
     nav = await _nav_context()
     return templates.TemplateResponse(request, "gallery.html", context={
         **nav,
@@ -258,7 +257,7 @@ async def gallery(request: Request, uploaded: int | None = None):
 # ── Web UI: Frame Detail Page ──────────────────────────────────────────
 
 @app.get("/frames/{frame_id}")
-async def frame_detail(request: Request, frame_id: int, saved: int | None = None):
+async def frame_detail(request: Request, frame_id: int, saved: int | None = None, error: str | None = None):
     frame = await db.get_frame(frame_id)
     if not frame:
         raise HTTPException(status_code=404, detail="Frame not found")
@@ -275,6 +274,7 @@ async def frame_detail(request: Request, frame_id: int, saved: int | None = None
         "frame_wake": frame_wake,
         "global_wake": global_wake,
         "saved": saved,
+        "error": error,
     })
 
 
@@ -293,16 +293,12 @@ async def save_frame_settings(frame_id: int, request: Request):
     # Update per-frame wake interval.
     use_custom = form.get("use_custom_wake") == "on"
     if use_custom:
-        try:
-            hours = int(form.get("wake_hours", 1))
-            minutes = int(form.get("wake_minutes", 0))
-            seconds = int(form.get("wake_seconds", 0))
-        except (ValueError, TypeError):
-            raise HTTPException(status_code=400, detail="Invalid integer value")
-        if not (0 <= hours <= 720 and 0 <= minutes <= 59 and 0 <= seconds <= 59):
-            raise HTTPException(status_code=400, detail="Values out of range")
-        if hours == 0 and minutes == 0 and seconds == 0:
-            raise HTTPException(status_code=400, detail="Wake interval cannot be zero")
+        result = _validate_wake_interval(form)
+        if isinstance(result, str):
+            from urllib.parse import quote
+            return RedirectResponse(
+                url=f"/frames/{frame_id}?error={quote(result)}", status_code=303)
+        hours, minutes, seconds = result
         await db.update_frame_wake_interval(frame_id, hours, minutes, seconds)
     else:
         await db.update_frame_wake_interval(frame_id, None, None, None)
@@ -328,23 +324,33 @@ async def assign_image(image_id: int, request: Request, _: str = Depends(verify_
 
 # ── Web UI: Global Settings ────────────────────────────────────────────
 
-@app.post("/settings")
-async def save_settings(request: Request):
-    form = await request.form()
+def _validate_wake_interval(form) -> tuple[int, int, int] | str:
+    """Validate wake interval from form data. Returns (h, m, s) or error string."""
     try:
         hours = int(form.get("wake_hours", 1))
         minutes = int(form.get("wake_minutes", 0))
         seconds = int(form.get("wake_seconds", 0))
     except (ValueError, TypeError):
-        raise HTTPException(status_code=400, detail="Invalid integer value")
+        return "Invalid wake interval values"
     if not (0 <= hours <= 720):
-        raise HTTPException(status_code=400, detail="Hours must be 0-720")
+        return "Hours must be 0–720"
     if not (0 <= minutes <= 59):
-        raise HTTPException(status_code=400, detail="Minutes must be 0-59")
+        return "Minutes must be 0–59"
     if not (0 <= seconds <= 59):
-        raise HTTPException(status_code=400, detail="Seconds must be 0-59")
+        return "Seconds must be 0–59"
     if hours == 0 and minutes == 0 and seconds == 0:
-        raise HTTPException(status_code=400, detail="Wake interval cannot be zero")
+        return "Wake interval cannot be zero"
+    return (hours, minutes, seconds)
+
+
+@app.post("/settings")
+async def save_settings(request: Request):
+    form = await request.form()
+    result = _validate_wake_interval(form)
+    if isinstance(result, str):
+        from urllib.parse import quote
+        return RedirectResponse(url=f"/?error={quote(result)}", status_code=303)
+    hours, minutes, seconds = result
     await db.set_wake_interval(hours, minutes, seconds)
     return RedirectResponse(url="/?saved=1", status_code=303)
 

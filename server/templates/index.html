@@ -14,6 +14,9 @@
         {% if saved %}
         <div class="toast">Settings saved.</div>
         {% endif %}
+        {% if error %}
+        <div class="toast toast-error">{{ error }}</div>
+        {% endif %}
 
         <!-- Frames -->
         <section class="section" id="frames">
