@@ -8,6 +8,22 @@ ESP32-S3 e-paper picture frame firmware for the Waveshare ESP32-S3-PhotoPainter 
 
 All I2C is bit-banged (~100 kHz). The IDF v5.5.3 I2C master driver on ESP32-S3 fires corrupt SCL clear-bus pulses on transaction timeouts, permanently wedging the PMIC after RTS-triggered reset.
 
+## Git & Contribution Workflow
+
+**NEVER commit directly to `main`.** All work happens on a `feature/*` or `fix/*`
+branch and lands on `main` only via a pull request. This applies to every change,
+including docs and specs.
+
+- Start each task by creating/switching to a `feature/<topic>` or `fix/<topic>` branch.
+- If you find yourself on `main` with local commits, move them to a branch before pushing.
+
+**Before merging any PR, always run all three:**
+1. **Code review** — `/code-review` (or the `code-review` skill) on the diff.
+2. **Document review** — review all docs touched/affected (README, CLAUDE.md, DECISIONS.md, specs) for accuracy and consistency.
+3. **CLAUDE.md improver** — the `claude-md-management:claude-md-improver` plugin.
+
+Address findings from all three before the PR is merged.
+
 ## Hardware: Waveshare ESP32-S3-PhotoPainter
 
 - **Product page**: https://www.waveshare.com/esp32-s3-photopainter.htm
