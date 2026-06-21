@@ -41,8 +41,16 @@ fi
 echo "Migrating data from $SRC -> $DEST"
 mkdir -p "$DEST"
 cp "$SRC/photoframe.db" "$DEST/photoframe.db"
-[ -d "$SRC/images" ] && cp -r "$SRC/images" "$DEST/images"
-[ -d "$SRC/thumbs" ] && cp -r "$SRC/thumbs" "$DEST/thumbs"
+# Copy directory *contents* (src/images/.) into dest so a --force re-run merges
+# in place instead of nesting under an existing dest/images/.
+if [ -d "$SRC/images" ]; then
+    mkdir -p "$DEST/images"
+    cp -r "$SRC/images/." "$DEST/images/"
+fi
+if [ -d "$SRC/thumbs" ]; then
+    mkdir -p "$DEST/thumbs"
+    cp -r "$SRC/thumbs/." "$DEST/thumbs/"
+fi
 
 echo "Done. Next:"
 echo "  cd $SCRIPT_DIR && docker compose up -d"

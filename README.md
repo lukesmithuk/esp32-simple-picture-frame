@@ -29,6 +29,8 @@ Includes a self-hosted photo server with a web UI for uploading and managing ima
 
 **Option A — Docker (recommended).** Runs the multi-arch image published by CI
 (`linux/amd64`, `linux/arm64`, `linux/arm/v7` — covers the Pi Zero 2W on 32-bit OS).
+Needs a recent Docker Engine + Compose v2 (install via [get.docker.com](https://get.docker.com);
+the `env_file` form in `compose.yaml` requires Compose **v2.24+**).
 
 ```bash
 cd server

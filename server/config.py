@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 
 BASE_DIR = Path(__file__).parent
-DATA_DIR = Path(os.environ.get("PHOTOFRAME_DATA_DIR", BASE_DIR))
+DATA_DIR = Path(os.environ.get("PHOTOFRAME_DATA_DIR") or BASE_DIR)
 IMAGES_DIR = DATA_DIR / "images"
 THUMBS_DIR = DATA_DIR / "thumbs"
 DB_PATH = DATA_DIR / "photoframe.db"

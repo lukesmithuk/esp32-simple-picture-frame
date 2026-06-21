@@ -25,3 +25,15 @@ def test_data_dir_defaults_to_base_dir(monkeypatch):
     importlib.reload(config)
     assert config.DATA_DIR == config.BASE_DIR
     assert config.DB_PATH == config.BASE_DIR / "photoframe.db"
+
+
+def test_data_dir_empty_string_falls_back_to_base_dir(monkeypatch):
+    # An empty value (e.g. `PHOTOFRAME_DATA_DIR=` in .env) must not resolve to CWD.
+    monkeypatch.setenv("PHOTOFRAME_DATA_DIR", "")
+    import config
+    try:
+        importlib.reload(config)
+        assert config.DATA_DIR == config.BASE_DIR
+    finally:
+        monkeypatch.delenv("PHOTOFRAME_DATA_DIR", raising=False)
+        importlib.reload(config)  # restore module-level paths for other tests
