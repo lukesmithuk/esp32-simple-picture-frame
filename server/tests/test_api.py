@@ -171,7 +171,7 @@ async def test_delete_image_api():
 
 @pytest.mark.asyncio
 async def test_zero_wake_interval_rejected():
-    """Global wake interval of 0h 0m 0s should be rejected."""
+    """Global wake interval of 0h 0m 0s is rejected via a redirect carrying an error toast."""
     async with AsyncClient(transport=transport, base_url="http://test",
                            follow_redirects=False) as client:
         r = await client.post("/settings", data={
@@ -179,4 +179,5 @@ async def test_zero_wake_interval_rejected():
             "wake_minutes": "0",
             "wake_seconds": "0",
         })
-    assert r.status_code == 400
+    assert r.status_code == 303
+    assert "error=" in r.headers["location"]
