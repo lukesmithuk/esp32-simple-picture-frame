@@ -93,10 +93,13 @@ PHOTOFRAME_API_KEY=yourkey ./run.sh # start for testing
 ```
 **Uninstall:** `./uninstall.sh` (removes systemd service, optionally deletes data)
 
-**Run tests** (on Windows use the `py` launcher; `*.sh` scripts are Linux-only):
+**Run tests** — build the venv with the project's Python (server targets 3.14;
+a bare `python` may be older and lack deps). One-time setup, then run:
 ```bash
-cd server && python -m venv venv && venv/bin/python -m pip install -r requirements.txt
-venv/bin/python -m pytest -q       # Windows: venv\Scripts\python -m pytest -q
+cd server
+py -3.14 -m venv venv   # Windows; on Linux: python3.14 -m venv venv
+venv/Scripts/python -m pip install -r requirements.txt   # Linux: venv/bin/python
+venv/Scripts/python -m pytest -q                          # Linux: venv/bin/python
 ```
 
 **Lint:** `cd server && python -m ruff check .` (config in `server/ruff.toml`).
