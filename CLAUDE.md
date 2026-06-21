@@ -72,26 +72,34 @@ rm -rf build sdkconfig && idf.py build
 
 ## Server
 
-Python/FastAPI photo server (in `server/`). See `server/install.sh` for setup.
+Python/FastAPI photo server (in `server/`).
 
+**Docker (recommended deployment):**
+```bash
+cd server && cp .env.example .env && docker compose up -d
+```
+Image: `ghcr.io/lukesmithuk/esp32-simple-picture-frame` (multi-arch amd64/arm64/armv7,
+built + published by `.github/workflows/ci.yml` on push to `main`). Data (DB, images,
+thumbs) persists in `server/data/` via `PHOTOFRAME_DATA_DIR=/data` (see `config.py`).
+Boot-start relies on compose `restart: unless-stopped` + Docker's daemon being enabled
+(`systemctl enable docker`) — no dedicated systemd unit. Migrate an old tarball install
+with `server/migrate-to-docker.sh /path/to/old/install`.
+
+**Tarball + systemd (deprecated, kept for non-Docker hosts):**
 ```bash
 cd server && ./install.sh          # create venv + install deps
 PHOTOFRAME_API_KEY=yourkey ./run.sh # start for testing
 ./install-service.sh               # install as systemd service
 ```
-
-**Install from release** (no git needed):
-```bash
-curl -L https://github.com/lukesmithuk/esp32-simple-picture-frame/releases/latest/download/photoframe-server.tar.gz | tar xz
-cd photoframe-server && ./setup.sh
-```
-
 **Uninstall:** `./uninstall.sh` (removes systemd service, optionally deletes data)
 
-**Run tests:**
+**Run tests** (on Windows use the `py` launcher; `*.sh` scripts are Linux-only):
 ```bash
-cd server && source venv/bin/activate && python -m pytest tests/ -v
+cd server && python -m venv venv && venv/bin/python -m pip install -r requirements.txt
+venv/bin/python -m pytest -q       # Windows: venv\Scripts\python -m pytest -q
 ```
+
+**Lint:** `cd server && python -m ruff check .` (config in `server/ruff.toml`).
 
 ### Server Architecture
 
@@ -100,7 +108,7 @@ cd server && source venv/bin/activate && python -m pytest tests/ -v
 - **Deployment target**: Raspberry Pi Zero 2W (512MB RAM) — keep dependencies lightweight
 - **Templates**: `server/templates/` (index.html, gallery.html, frame.html, logs.html, nav.html)
 - **Static assets**: `server/static/` (style.css)
-- **Database**: `server/photoframe.db` (SQLite, auto-created)
+- **Database**: `photoframe.db` (SQLite, auto-created) under `DATA_DIR` — `server/` for native dev, `/data` (volume) in the container; set via `PHOTOFRAME_DATA_DIR`
 - **Timestamps**: Stored as UTC ISO 8601 with `+00:00` suffix, converted to local time in browser
 - **Multi-frame**: Per-frame image assignment via `frame_images` table, per-frame wake interval, frame naming
 

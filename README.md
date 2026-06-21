@@ -27,24 +27,59 @@ Includes a self-hosted photo server with a web UI for uploading and managing ima
 
 ### Server (Raspberry Pi or any Linux machine)
 
-**Option A — Install from release** (no git needed):
+**Option A — Docker (recommended).** Runs the multi-arch image published by CI
+(`linux/amd64`, `linux/arm64`, `linux/arm/v7` — covers the Pi Zero 2W on 32-bit OS).
+
+```bash
+cd server
+cp .env.example .env          # set PHOTOFRAME_API_KEY
+docker compose up -d          # ghcr.io/lukesmithuk/esp32-simple-picture-frame
+```
+
+Photos, thumbnails, and the SQLite DB persist in `server/data/` (mounted to `/data`).
+Open `http://<server-ip>:8080` to upload photos and monitor frames.
+
+**Starts on boot** via compose's `restart: unless-stopped` — once you've run
+`docker compose up -d` and Docker's daemon is enabled at boot
+(`sudo systemctl is-enabled docker`; enable with `sudo systemctl enable docker`),
+the container comes back after a reboot. No extra systemd unit needed.
+
+**Migrating from an existing tarball install:**
+```bash
+cd server
+./migrate-to-docker.sh /path/to/old/photoframe-server   # stops+disables old service, copies DB + images + thumbs
+docker compose up -d
+./uninstall.sh                                           # optional: remove the now-disabled old systemd unit
+```
+
+**Option B — Tarball + systemd (deprecated).**
+
+> **Deprecated** in favour of Docker (above); kept for non-Docker hosts and
+> slated for future removal.
+
 ```bash
 curl -L https://github.com/lukesmithuk/esp32-simple-picture-frame/releases/latest/download/photoframe-server.tar.gz | tar xz
 cd photoframe-server
 ./setup.sh    # creates venv, installs deps, prompts for API key, installs systemd service
 ```
 
-**Option B — From source** (for development):
-```bash
+For development from source: `./install.sh` then `PHOTOFRAME_API_KEY=yourkey ./run.sh`.
+
+**Uninstall (either path):** `./uninstall.sh` (removes the systemd service; keep or delete data when prompted).
+
+### Server development on Windows
+
+Primary path is Docker Desktop (`cd server && docker compose up`). Without Docker:
+
+```powershell
 cd server
-./install.sh                          # create venv + install deps
-PHOTOFRAME_API_KEY=yourkey ./run.sh   # start server
-./install-service.sh                  # install as systemd service
+py -m venv venv
+venv\Scripts\python -m pip install -r requirements.txt
+venv\Scripts\python -m pytest                 # run tests
+$env:PHOTOFRAME_API_KEY="changeme"; venv\Scripts\python main.py   # run locally
 ```
 
-Open `http://<server-ip>:8080` to upload photos and monitor frames.
-
-**Uninstall:** `./uninstall.sh`
+The `*.sh` scripts (`setup.sh`, `run.sh`, `uninstall.sh`, `migrate-to-docker.sh`) target Linux.
 
 ### Frame Firmware
 

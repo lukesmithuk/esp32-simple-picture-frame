@@ -1,5 +1,9 @@
 name: Release Server Package
 
+# DEPRECATED: the tarball release is superseded by the GHCR container image
+# published by ci.yml (Docker is the recommended deployment). Kept for
+# non-Docker installs; slated for future removal.
+
 on:
   push:
     tags:
