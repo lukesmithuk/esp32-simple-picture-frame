@@ -313,3 +313,30 @@ update frequencies (e.g. a bedside frame updates hourly, a living room
 frame every 30 minutes). The nullable column approach avoids a separate
 table and makes the fallback logic simple: check frame columns first,
 then global settings.
+
+---
+
+## ADR-021 — Containerised server deployment with multi-arch CI
+
+**Status:** Accepted
+**Date:** 2026-06-21
+
+**Decision:** Deploy the photo server as a Docker container
+(`server/Dockerfile` + `server/compose.yaml`, `python:3.14-slim`), published to
+GHCR by `.github/workflows/ci.yml`. CI runs lint + pytest, then builds
+`linux/amd64`, `linux/arm64`, and `linux/arm/v7` on a parallel runner matrix
+(each leg smoke-booted), pushing per-arch digests that a merge job stitches into
+one manifest. The DB/images/thumbs live under `PHOTOFRAME_DATA_DIR` (a `/data`
+volume in the container). The server is LAN-only (no tunnel); boot-start relies
+on compose `restart: unless-stopped` rather than a dedicated systemd unit. The
+tarball + systemd install path is retained but **deprecated**.
+
+**Rationale:** Containerising matches the sibling `personal-briefing` project and
+makes deployment reproducible and upgradeable without touching the Pi's Python
+environment. The Pi Zero 2W runs 32-bit Raspberry Pi OS (`uname -m` → `armv7l`),
+so `linux/arm/v7` is required; armv7 has no native GitHub runner, so it builds on
+the `ubuntu-24.04-arm` runner via aarch32 (near-native, fast enough to smoke-boot).
+Rooting data at a volume keeps photos and the DB across image upgrades. A
+migration script (`server/migrate-to-docker.sh`) copies an existing tarball
+install's data — verified safe because the DB stores relative filenames and the
+schema is shared.

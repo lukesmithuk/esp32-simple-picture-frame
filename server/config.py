@@ -2,9 +2,10 @@ import os
 from pathlib import Path
 
 BASE_DIR = Path(__file__).parent
-IMAGES_DIR = BASE_DIR / "images"
-THUMBS_DIR = BASE_DIR / "thumbs"
-DB_PATH = BASE_DIR / "photoframe.db"
+DATA_DIR = Path(os.environ.get("PHOTOFRAME_DATA_DIR") or BASE_DIR)
+IMAGES_DIR = DATA_DIR / "images"
+THUMBS_DIR = DATA_DIR / "thumbs"
+DB_PATH = DATA_DIR / "photoframe.db"
 
 API_KEY = os.environ.get("PHOTOFRAME_API_KEY", "changeme")
 HOST = os.environ.get("PHOTOFRAME_HOST", "0.0.0.0")
@@ -15,5 +16,6 @@ DISPLAY_WIDTH = 800
 DISPLAY_HEIGHT = 480
 
 # Create directories on import
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 IMAGES_DIR.mkdir(exist_ok=True)
 THUMBS_DIR.mkdir(exist_ok=True)

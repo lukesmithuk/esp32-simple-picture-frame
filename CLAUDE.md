@@ -8,6 +8,22 @@ ESP32-S3 e-paper picture frame firmware for the Waveshare ESP32-S3-PhotoPainter 
 
 All I2C is bit-banged (~100 kHz). The IDF v5.5.3 I2C master driver on ESP32-S3 fires corrupt SCL clear-bus pulses on transaction timeouts, permanently wedging the PMIC after RTS-triggered reset.
 
+## Git & Contribution Workflow
+
+**NEVER commit directly to `main`.** All work happens on a `feature/*` or `fix/*`
+branch and lands on `main` only via a pull request. This applies to every change,
+including docs and specs.
+
+- Start each task by creating/switching to a `feature/<topic>` or `fix/<topic>` branch.
+- If you find yourself on `main` with local commits, move them to a branch before pushing.
+
+**Before merging any PR, always run all three:**
+1. **Code review** — `/code-review` (or the `code-review` skill) on the diff.
+2. **Document review** — review all docs touched/affected (README, CLAUDE.md, DECISIONS.md, specs) for accuracy and consistency.
+3. **CLAUDE.md improver** — the `claude-md-management:claude-md-improver` plugin.
+
+Address findings from all three before the PR is merged.
+
 ## Hardware: Waveshare ESP32-S3-PhotoPainter
 
 - **Product page**: https://www.waveshare.com/esp32-s3-photopainter.htm
@@ -56,26 +72,37 @@ rm -rf build sdkconfig && idf.py build
 
 ## Server
 
-Python/FastAPI photo server (in `server/`). See `server/install.sh` for setup.
+Python/FastAPI photo server (in `server/`).
 
+**Docker (recommended deployment):**
+```bash
+cd server && cp .env.example .env && docker compose up -d
+```
+Image: `ghcr.io/lukesmithuk/esp32-simple-picture-frame` (multi-arch amd64/arm64/armv7,
+built + published by `.github/workflows/ci.yml` on push to `main`). Data (DB, images,
+thumbs) persists in `server/data/` via `PHOTOFRAME_DATA_DIR=/data` (see `config.py`).
+Boot-start relies on compose `restart: unless-stopped` + Docker's daemon being enabled
+(`systemctl enable docker`) — no dedicated systemd unit. Migrate an old tarball install
+with `server/migrate-to-docker.sh /path/to/old/install`.
+
+**Tarball + systemd (deprecated, kept for non-Docker hosts):**
 ```bash
 cd server && ./install.sh          # create venv + install deps
 PHOTOFRAME_API_KEY=yourkey ./run.sh # start for testing
 ./install-service.sh               # install as systemd service
 ```
-
-**Install from release** (no git needed):
-```bash
-curl -L https://github.com/lukesmithuk/esp32-simple-picture-frame/releases/latest/download/photoframe-server.tar.gz | tar xz
-cd photoframe-server && ./setup.sh
-```
-
 **Uninstall:** `./uninstall.sh` (removes systemd service, optionally deletes data)
 
-**Run tests:**
+**Run tests** — build the venv with the project's Python (server targets 3.14;
+a bare `python` may be older and lack deps). One-time setup, then run:
 ```bash
-cd server && source venv/bin/activate && python -m pytest tests/ -v
+cd server
+py -3.14 -m venv venv   # Windows; on Linux: python3.14 -m venv venv
+venv/Scripts/python -m pip install -r requirements.txt   # Linux: venv/bin/python
+venv/Scripts/python -m pytest -q                          # Linux: venv/bin/python
 ```
+
+**Lint:** `cd server && python -m ruff check .` (config in `server/ruff.toml`).
 
 ### Server Architecture
 
@@ -84,7 +111,7 @@ cd server && source venv/bin/activate && python -m pytest tests/ -v
 - **Deployment target**: Raspberry Pi Zero 2W (512MB RAM) — keep dependencies lightweight
 - **Templates**: `server/templates/` (index.html, gallery.html, frame.html, logs.html, nav.html)
 - **Static assets**: `server/static/` (style.css)
-- **Database**: `server/photoframe.db` (SQLite, auto-created)
+- **Database**: `photoframe.db` (SQLite, auto-created) under `DATA_DIR` — `server/` for native dev, `/data` (volume) in the container; set via `PHOTOFRAME_DATA_DIR`
 - **Timestamps**: Stored as UTC ISO 8601 with `+00:00` suffix, converted to local time in browser
 - **Multi-frame**: Per-frame image assignment via `frame_images` table, per-frame wake interval, frame naming
 

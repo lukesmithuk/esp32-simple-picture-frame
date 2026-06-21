@@ -66,10 +66,12 @@ dependencies.lock
 
 # Server
 server/server.env
+server/.env
 server/venv/
 server/images/
 server/thumbs/
 server/photoframe.db
+server/data/
 server/__pycache__/
 server/tests/__pycache__/
 

@@ -1,0 +1,8 @@
+# Minimal lint config — pyflakes (F) + pycodestyle errors (E) + import order (I),
+# not a style overhaul.
+target-version = "py314"
+line-length = 100
+
+[lint]
+select = ["E", "F", "I"]
+ignore = ["E501"]  # long lines are not worth churning existing code over

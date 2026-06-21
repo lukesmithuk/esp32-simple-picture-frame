@@ -3,8 +3,14 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import (
-    Body, Depends, FastAPI, File, Form, Header, HTTPException,
-    Request, UploadFile,
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    Request,
+    UploadFile,
 )
 from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -55,6 +61,13 @@ async def get_frame_id(
     mac = x_frame_id or "unknown"
     frame_id = await db.get_or_create_frame(mac, x_api_key)
     return frame_id
+
+
+# ── Health ───────────────────────────────────────────────────────────────
+
+@app.get("/healthz")
+async def healthz():
+    return {"status": "ok"}
 
 
 # ── API: Image fetch ─────────────────────────────────────────────────────

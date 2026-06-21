@@ -1,5 +1,9 @@
 name: Release Server Package
 
+# DEPRECATED: the tarball release is superseded by the GHCR container image
+# published by ci.yml (Docker is the recommended deployment). Kept for
+# non-Docker installs; slated for future removal.
+
 on:
   push:
     tags:
@@ -30,14 +34,15 @@ jobs:
           cp server/main.py "$STAGING/"
           cp server/run.sh "$STAGING/"
           cp server/setup.sh "$STAGING/"
+          cp server/uninstall.sh "$STAGING/"
           cp -r server/templates/* "$STAGING/templates/"
           cp -r server/static/* "$STAGING/static/"
 
-          # Create runtime-only requirements.txt (strip test deps)
-          grep -v -E '^(pytest|httpx|pytest-asyncio)' server/requirements.txt > "$STAGING/requirements.txt"
+          # Create runtime-only requirements.txt (strip test/dev deps)
+          grep -v -E '^(pytest|httpx|pytest-asyncio|ruff)' server/requirements.txt > "$STAGING/requirements.txt"
 
           # Ensure scripts are executable after extraction
-          chmod +x "$STAGING/setup.sh" "$STAGING/run.sh"
+          chmod +x "$STAGING/setup.sh" "$STAGING/run.sh" "$STAGING/uninstall.sh"
 
           # Create archives
           tar czf "photoframe-server-${{ steps.tag.outputs.TAG }}.tar.gz" "$STAGING"
