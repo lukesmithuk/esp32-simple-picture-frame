@@ -57,6 +57,13 @@ async def get_frame_id(
     return frame_id
 
 
+# ── Health ───────────────────────────────────────────────────────────────
+
+@app.get("/healthz")
+async def healthz():
+    return {"status": "ok"}
+
+
 # ── API: Image fetch ─────────────────────────────────────────────────────
 
 @app.get("/api/next")

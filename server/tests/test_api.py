@@ -181,3 +181,13 @@ async def test_zero_wake_interval_rejected():
         })
     assert r.status_code == 303
     assert "error=" in r.headers["location"]
+
+
+# ── Health ───────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_healthz_no_auth():
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        resp = await ac.get("/healthz")
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ok"}
