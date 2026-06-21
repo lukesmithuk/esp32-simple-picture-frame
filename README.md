@@ -53,6 +53,8 @@ cd server
 docker compose up -d
 ./uninstall.sh                                           # optional: remove the now-disabled old systemd unit
 ```
+See [server/MIGRATION.md](server/MIGRATION.md) for the full guide — API key
+reuse, systemd considerations, rollback, and troubleshooting.
 
 **Option B — Tarball + systemd (deprecated).**
 

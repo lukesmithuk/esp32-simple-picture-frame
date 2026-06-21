@@ -83,7 +83,8 @@ built + published by `.github/workflows/ci.yml` on push to `main`). Data (DB, im
 thumbs) persists in `server/data/` via `PHOTOFRAME_DATA_DIR=/data` (see `config.py`).
 Boot-start relies on compose `restart: unless-stopped` + Docker's daemon being enabled
 (`systemctl enable docker`) — no dedicated systemd unit. Migrate an old tarball install
-with `server/migrate-to-docker.sh /path/to/old/install`.
+with `server/migrate-to-docker.sh /path/to/old/install` (full guide:
+`server/MIGRATION.md`).
 
 **Tarball + systemd (deprecated, kept for non-Docker hosts):**
 ```bash
