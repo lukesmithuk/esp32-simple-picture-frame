@@ -72,18 +72,22 @@ all present.
 |---------|-----------|
 | **Port 8080 conflict** | The old service and the container both bind 8080. Step 3 stops+disables the old one first — don't `docker compose up` before migrating. You need `sudo` rights for the stop/disable to take effect. |
 | **DB integrity** | Stopping the service *before* the copy (Step 3 does this) avoids copying a half-written SQLite WAL. Never copy `photoframe.db` while the old service is running. |
-| **Leftover unit file** | The migration disables but keeps `/etc/systemd/system/photoframe-server.service`. To remove it fully: `cd /path/to/old/photoframe-server && ./uninstall.sh`, and answer **`N`** to *"Delete server data?"* — your data is already migrated and the old copy is your rollback. |
+| **Leftover unit file** | The migration disables but keeps `/etc/systemd/system/photoframe-server.service`. Removal is optional (a disabled unit won't run). Do it only once you're sure you won't roll back (see below), then: `sudo rm /etc/systemd/system/photoframe-server.service && sudo systemctl daemon-reload`. (The repo's `server/uninstall.sh` does the same; its "Delete server data?" prompt targets the *legacy* `images/`, `thumbs/`, `photoframe.db`, `venv/` in its own dir — **not** `server/data/` — but answer `N` to keep your old install as a rollback.) |
 | **Management commands change** | There is no `photoframe-server.service` anymore. Use `docker compose ps`, `docker compose logs -f`, and `docker compose restart` instead of `systemctl status` / `journalctl -u`. |
 
 ## Rollback
 
 The migration **copies** (never moves), so the old venv, data, and unit file
-stay intact. To revert to the systemd install:
+stay intact. As long as you have **not** removed the unit file (see the systemd
+table above), revert to the systemd install with:
 
 ```bash
 docker compose down
 sudo systemctl enable --now photoframe-server
 ```
+
+If you already removed the unit file, reinstall it from the old tarball with its
+`install-service.sh` (or `setup.sh`) before re-enabling.
 
 ## Troubleshooting
 
