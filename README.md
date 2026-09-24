@@ -13,6 +13,7 @@ Includes a self-hosted photo server with a web UI for uploading and managing ima
 - **NTP time sync** updates the RTC on each WiFi connection
 - **Image shuffle** cycles through all photos before repeating
 - **Remote monitoring** — battery status, firmware version, and logs viewable in the web UI
+- **Low-battery email alerts** — one digest email when any frame drops below a threshold, with daily reminders until charged
 - **Configurable wake interval** from the web UI or SD card config file, per-frame or global
 - **Deep sleep** between updates for ultra-low power consumption
 
@@ -70,6 +71,28 @@ cd photoframe-server
 For development from source: `./install.sh` then `PHOTOFRAME_API_KEY=yourkey ./run.sh`.
 
 **Uninstall (either path):** `./uninstall.sh` (removes the systemd service; keep or delete data when prompted).
+
+### Battery alert emails (optional)
+
+The server can email you when any frame's battery drops below a threshold.
+
+1. Add SMTP settings to `server/.env` (see `.env.example`). For example, Gmail
+   with an [app password](https://myaccount.google.com/apppasswords):
+   ```bash
+   PHOTOFRAME_SMTP_HOST=smtp.gmail.com
+   PHOTOFRAME_SMTP_PORT=587
+   PHOTOFRAME_SMTP_TLS=starttls
+   PHOTOFRAME_SMTP_USER=you@gmail.com
+   PHOTOFRAME_SMTP_PASSWORD=your-app-password
+   ```
+   Then run `docker compose up -d` to restart with the new settings.
+2. On the dashboard, under **Global Settings → Battery alerts**, enter the
+   recipient address (comma-separate several) and the threshold (default 20%),
+   then click **Save**. Use **Send test email** to check your settings.
+
+You get one email listing every low frame, then a reminder every 24 hours
+until they're charged. A frame re-arms once it's charging, on USB, or back
+above the threshold + 5%.
 
 ### Server development on Windows
 

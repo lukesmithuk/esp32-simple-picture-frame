@@ -115,6 +115,8 @@ venv/Scripts/python -m pytest -q                          # Linux: venv/bin/pyth
 - **Database**: `photoframe.db` (SQLite, auto-created) under `DATA_DIR` — `server/` for native dev, `/data` (volume) in the container; set via `PHOTOFRAME_DATA_DIR`
 - **Timestamps**: Stored as UTC ISO 8601 with `+00:00` suffix, converted to local time in browser
 - **Multi-frame**: Per-frame image assignment via `frame_images` table, per-frame wake interval, frame naming
+- **Battery alerts**: `notifier.py` — after each `/api/status`, a background task checks *all* frames and sends one SMTP digest email (stdlib `smtplib`). SMTP creds in `.env` (`PHOTOFRAME_SMTP_*`); recipient + threshold in the `settings` table via the dashboard. State: `frames.low_battery_alerted_at`. See ADR-022
+- **Tests**: `tests/conftest.py` points `PHOTOFRAME_DATA_DIR` at a temp dir — `test_api.py` wipes the DB/images between tests, so never bypass it
 
 ## Component Map
 
