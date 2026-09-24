@@ -5,6 +5,7 @@ and sends one combined email when any low frame is due an alert (see
 docs/superpowers/specs/2026-09-24-battery-alert-email-design.md).
 """
 import asyncio
+import email.utils
 import logging
 import smtplib
 import ssl
@@ -86,13 +87,13 @@ def evaluate(frames: list[dict], threshold: int, now: datetime) -> AlertDecision
         on_power = bool(f["charging"]) or bool(f["usb_connected"])
 
         if (not f["battery_connected"] or on_power
-                or (pct is not None and pct >= threshold + REARM_MARGIN)):
+                or (pct is not None and pct >= 0 and pct >= threshold + REARM_MARGIN)):
             if alerted is not None:
                 decision.rearm_ids.append(f["id"])
             continue
 
-        if pct is None or pct >= threshold:
-            continue  # not low; alert state unchanged (hysteresis band)
+        if pct is None or pct < 0 or pct >= threshold:
+            continue  # unknown or not low; alert state unchanged (hysteresis band)
 
         decision.low_frames.append(f)
         if alerted is None:
@@ -123,6 +124,8 @@ def _message(cfg: SmtpConfig, recipients: list[str], subject: str, body: str) ->
     msg["Subject"] = subject
     msg["From"] = cfg.sender
     msg["To"] = ", ".join(recipients)
+    msg["Date"] = email.utils.formatdate(usegmt=True)
+    msg["Message-ID"] = email.utils.make_msgid(domain=cfg.sender.rpartition("@")[2] or None)
     msg.set_content(body)
     return msg
 

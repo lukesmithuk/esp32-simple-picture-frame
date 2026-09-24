@@ -144,6 +144,21 @@ def test_null_percent_is_ignored_and_keeps_state():
     assert not d.send
 
 
+def test_negative_percent_is_ignored_and_keeps_state():
+    # Firmware sends -1 when the battery read fails; treat like NULL/unknown.
+    d = evaluate([frame(pct=-1, alerted=NOW - timedelta(hours=30))], T, NOW)
+    assert d.rearm_ids == []
+    assert d.low_frames == []
+    assert not d.send
+
+
+def test_negative_percent_new_frame_does_not_send():
+    d = evaluate([frame(pct=-1, alerted=None)], T, NOW)
+    assert d.low_frames == []
+    assert not d.send
+    assert d.rearm_ids == []
+
+
 def test_reminder_not_due_before_24h():
     d = evaluate([frame(pct=10, alerted=NOW - timedelta(hours=23, minutes=59))], T, NOW)
     assert [f["id"] for f in d.low_frames] == [1]
@@ -230,6 +245,20 @@ def test_test_message():
     assert msg["Subject"] == "Photo frame test email"
     assert msg["To"] == "me@example.com"
     assert "20%" in msg.get_content()
+
+
+def test_test_message_has_date_and_message_id_headers():
+    msg = notifier.build_test_message(T, CFG, ["me@example.com"])
+    assert msg["Date"] is not None
+    assert msg["Message-ID"] is not None
+    assert msg["Message-ID"].endswith("@test>")
+
+
+def test_alert_message_has_date_and_message_id_headers():
+    d = AlertDecision(low_frames=[frame(pct=18, name="Kitchen")], new_ids={1}, send=True)
+    msg = notifier.build_alert_message(d, T, CFG, ["me@example.com"])
+    assert msg["Date"] is not None
+    assert msg["Message-ID"] is not None
 
 
 # ── send_email ───────────────────────────────────────────────────────────
