@@ -1,4 +1,6 @@
+import smtplib
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -7,6 +9,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import notifier
+from database import Database
 from notifier import AlertDecision, SmtpConfig, evaluate, parse_recipients
 
 NOW = datetime(2026, 9, 24, 12, 0, tzinfo=timezone.utc)
@@ -227,3 +230,238 @@ def test_test_message():
     assert msg["Subject"] == "Photo frame test email"
     assert msg["To"] == "me@example.com"
     assert "20%" in msg.get_content()
+
+
+# ── send_email ───────────────────────────────────────────────────────────
+
+class FakeSMTP:
+    instances: list["FakeSMTP"] = []
+
+    def __init__(self, host, port, timeout=None, context=None):
+        self.host, self.port, self.timeout = host, port, timeout
+        self.calls = []
+        FakeSMTP.instances.append(self)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.calls.append("quit")
+        return False
+
+    def starttls(self, context=None):
+        self.calls.append("starttls")
+
+    def login(self, user, password):
+        self.calls.append(("login", user, password))
+
+    def send_message(self, msg):
+        self.calls.append(("send", msg["Subject"]))
+
+
+@pytest.fixture
+def fake_smtp(monkeypatch):
+    FakeSMTP.instances = []
+    monkeypatch.setattr(notifier.smtplib, "SMTP", FakeSMTP)
+    monkeypatch.setattr(notifier.smtplib, "SMTP_SSL", FakeSMTP)
+    return FakeSMTP
+
+
+def test_send_email_starttls_with_login(fake_smtp):
+    notifier.send_email(CFG, notifier.build_test_message(T, CFG, ["me@example.com"]))
+    (smtp,) = fake_smtp.instances
+    assert (smtp.host, smtp.port, smtp.timeout) == ("smtp.test", 587, 15)
+    assert smtp.calls == [
+        "starttls", ("login", "user@test", "pw"), ("send", "Photo frame test email"), "quit",
+    ]
+
+
+def test_send_email_without_user_skips_login(fake_smtp):
+    cfg = SmtpConfig("smtp.test", 25, "starttls", "", "", "frames@test")
+    notifier.send_email(cfg, notifier.build_test_message(T, cfg, ["me@example.com"]))
+    assert not any(isinstance(c, tuple) and c[0] == "login" for c in fake_smtp.instances[0].calls)
+
+
+def test_send_email_ssl_uses_smtp_ssl_without_starttls(monkeypatch, fake_smtp):
+    used = []
+
+    class FakeSSL(FakeSMTP):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            used.append("ssl")
+
+    monkeypatch.setattr(notifier.smtplib, "SMTP_SSL", FakeSSL)
+    cfg = SmtpConfig("smtp.test", 465, "ssl", "user@test", "pw", "frames@test")
+    notifier.send_email(cfg, notifier.build_test_message(T, cfg, ["me@example.com"]))
+    assert used == ["ssl"]
+    assert "starttls" not in fake_smtp.instances[0].calls
+
+
+# ── check_battery_alerts (with a real database) ──────────────────────────
+
+@pytest.fixture
+async def db(tmp_path):
+    d = Database(tmp_path / "test.db")
+    await d.init()
+    yield d
+    await d.close()
+
+
+@pytest.fixture
+def sent(monkeypatch):
+    """Enable SMTP config and capture sent messages instead of sending."""
+    import config
+    monkeypatch.setattr(config, "SMTP_HOST", "smtp.test")
+    monkeypatch.setattr(config, "SMTP_FROM", "frames@test")
+    messages = []
+    monkeypatch.setattr(notifier, "send_email", lambda cfg, msg: messages.append(msg))
+    return messages
+
+
+async def add_frame(db, mac, pct, *, charging=False, usb=False, connected=True, name=None):
+    frame_id = await db.get_or_create_frame(mac, "k")
+    await db.update_frame_status(frame_id, {
+        "battery_connected": connected, "battery_percent": pct, "battery_mv": 3600,
+        "charging": charging, "usb_connected": usb,
+    })
+    if name:
+        await db.update_frame_name(frame_id, name)
+    return frame_id
+
+
+async def alerted_at(db, frame_id):
+    return (await db.get_frame(frame_id))["low_battery_alerted_at"]
+
+
+async def test_check_does_nothing_without_smtp_host(db, sent, monkeypatch):
+    import config
+    monkeypatch.setattr(config, "SMTP_HOST", "")
+    await db.set_alert_settings("me@example.com", T)
+    await add_frame(db, "AA:01", 5)
+    await notifier.check_battery_alerts(db, now=NOW)
+    assert sent == []
+
+
+async def test_check_does_nothing_without_recipient(db, sent):
+    await add_frame(db, "AA:01", 5)
+    await notifier.check_battery_alerts(db, now=NOW)
+    assert sent == []
+
+
+async def test_check_sends_once_and_records(db, sent):
+    await db.set_alert_settings("me@example.com", T)
+    fid = await add_frame(db, "AA:01", 15, name="Kitchen")
+
+    await notifier.check_battery_alerts(db, now=NOW)
+    assert len(sent) == 1
+    assert sent[0]["Subject"] == "Photo frame battery low: Kitchen (15%)"
+    assert sent[0]["To"] == "me@example.com"
+    assert await alerted_at(db, fid) == NOW.isoformat()
+
+    await notifier.check_battery_alerts(db, now=NOW + timedelta(hours=1))
+    assert len(sent) == 1
+
+
+async def test_check_sends_reminder_after_24h(db, sent):
+    await db.set_alert_settings("me@example.com", T)
+    fid = await add_frame(db, "AA:01", 15)
+    await notifier.check_battery_alerts(db, now=NOW)
+    later = NOW + timedelta(hours=24)
+    await notifier.check_battery_alerts(db, now=later)
+    assert len(sent) == 2
+    assert "[NEW]" not in sent[1].get_content()
+    assert await alerted_at(db, fid) == later.isoformat()
+
+
+async def test_check_rearms_after_charging_then_alerts_again(db, sent):
+    await db.set_alert_settings("me@example.com", T)
+    fid = await add_frame(db, "AA:01", 15)
+    await notifier.check_battery_alerts(db, now=NOW)
+
+    await add_frame(db, "AA:01", 16, charging=True)
+    await notifier.check_battery_alerts(db, now=NOW + timedelta(hours=1))
+    assert await alerted_at(db, fid) is None
+    assert len(sent) == 1
+
+    await add_frame(db, "AA:01", 12)
+    await notifier.check_battery_alerts(db, now=NOW + timedelta(hours=2))
+    assert len(sent) == 2
+    assert "[NEW]" in sent[1].get_content()
+
+
+async def test_check_digest_lists_all_low_frames_and_records_all(db, sent):
+    await db.set_alert_settings("me@example.com", T)
+    a = await add_frame(db, "AA:01", 15, name="Kitchen")
+    await notifier.check_battery_alerts(db, now=NOW)
+
+    b = await add_frame(db, "AA:02", 10, name="Hall")
+    later = NOW + timedelta(hours=2)
+    await notifier.check_battery_alerts(db, now=later)
+
+    assert len(sent) == 2
+    assert sent[1]["Subject"] == "Photo frame battery low: 2 frames"
+    body = sent[1].get_content()
+    assert "Hall — 10%" in body and "Kitchen — 15%" in body
+    assert await alerted_at(db, a) == later.isoformat()
+    assert await alerted_at(db, b) == later.isoformat()
+
+
+async def test_check_send_failure_records_nothing_then_retries(db, sent, monkeypatch):
+    await db.set_alert_settings("me@example.com", T)
+    fid = await add_frame(db, "AA:01", 15)
+
+    def boom(cfg, msg):
+        raise smtplib.SMTPServerDisconnected("down")
+
+    monkeypatch.setattr(notifier, "send_email", boom)
+    await notifier.check_battery_alerts(db, now=NOW)  # must not raise
+    assert await alerted_at(db, fid) is None
+
+    monkeypatch.setattr(notifier, "send_email", lambda cfg, msg: sent.append(msg))
+    await notifier.check_battery_alerts(db, now=NOW + timedelta(hours=1))
+    assert len(sent) == 1
+
+
+async def test_check_rearms_persist_even_if_send_fails(db, sent, monkeypatch):
+    await db.set_alert_settings("me@example.com", T)
+    a = await add_frame(db, "AA:01", 15)
+    await notifier.check_battery_alerts(db, now=NOW)
+
+    await add_frame(db, "AA:01", 15, charging=True)   # a re-arms
+    b = await add_frame(db, "AA:02", 10)               # b is new → send attempted
+
+    def boom(cfg, msg):
+        raise OSError("network unreachable")
+
+    monkeypatch.setattr(notifier, "send_email", boom)
+    await notifier.check_battery_alerts(db, now=NOW + timedelta(hours=1))
+    assert await alerted_at(db, a) is None
+    assert await alerted_at(db, b) is None
+
+
+async def test_concurrent_checks_send_only_once(db, sent, monkeypatch):
+    import asyncio
+    await db.set_alert_settings("me@example.com", T)
+    await add_frame(db, "AA:01", 15)
+
+    def slow_send(cfg, msg):
+        time.sleep(0.2)  # runs in a worker thread; widens the race window
+        sent.append(msg)
+
+    monkeypatch.setattr(notifier, "send_email", slow_send)
+    await asyncio.gather(
+        notifier.check_battery_alerts(db, now=NOW),
+        notifier.check_battery_alerts(db, now=NOW),
+    )
+    assert len(sent) == 1
+
+
+async def test_check_swallows_unexpected_errors(db, sent, monkeypatch):
+    await db.set_alert_settings("me@example.com", T)
+
+    async def broken():
+        raise RuntimeError("db exploded")
+
+    monkeypatch.setattr(db, "list_frames", broken)
+    await notifier.check_battery_alerts(db, now=NOW)  # must not raise
+    assert sent == []

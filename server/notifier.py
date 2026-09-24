@@ -4,7 +4,10 @@ On every frame status report, check_battery_alerts() looks at *all* frames
 and sends one combined email when any low frame is due an alert (see
 docs/superpowers/specs/2026-09-24-battery-alert-email-design.md).
 """
+import asyncio
 import logging
+import smtplib
+import ssl
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
@@ -15,6 +18,11 @@ logger = logging.getLogger("uvicorn.error")
 
 REARM_MARGIN = 5  # percentage points above the threshold before re-arming
 REMINDER_INTERVAL = timedelta(hours=24)
+SMTP_TIMEOUT = 15  # seconds
+
+# Serialises check → send → record so two simultaneous frame reports can't
+# both send the same alert. The server is a single uvicorn process.
+_lock = asyncio.Lock()
 
 
 # ── Configuration ────────────────────────────────────────────────────────
@@ -152,3 +160,56 @@ def build_test_message(threshold: int, cfg: SmtpConfig, recipients: list[str]) -
         f"address when a frame drops below {threshold}%.\n"
     )
     return _message(cfg, recipients, "Photo frame test email", body)
+
+
+# ── Sending ──────────────────────────────────────────────────────────────
+
+def send_email(cfg: SmtpConfig, msg: EmailMessage) -> None:
+    """Send synchronously (call via asyncio.to_thread). Raises on failure."""
+    context = ssl.create_default_context()
+    if cfg.tls == "ssl":
+        smtp = smtplib.SMTP_SSL(cfg.host, cfg.port, timeout=SMTP_TIMEOUT, context=context)
+    else:
+        smtp = smtplib.SMTP(cfg.host, cfg.port, timeout=SMTP_TIMEOUT)
+    with smtp:
+        if cfg.tls != "ssl":
+            smtp.starttls(context=context)
+        if cfg.user:
+            smtp.login(cfg.user, cfg.password)
+        smtp.send_message(msg)
+
+
+# ── Check (runs as a background task after each status report) ───────────
+
+async def check_battery_alerts(db, now: datetime | None = None) -> None:
+    """Evaluate all frames and email if any low frame is due. Never raises."""
+    try:
+        async with _lock:
+            await _check(db, now or datetime.now(timezone.utc))
+    except Exception:
+        logger.exception("Battery alert check failed")
+
+
+async def _check(db, now: datetime) -> None:
+    cfg = smtp_config()
+    settings = await db.get_alert_settings()
+    recipients = parse_recipients(settings["email"]) or []
+    if not cfg.configured or not recipients:
+        return
+
+    decision = evaluate(await db.list_frames(), settings["threshold"], now)
+    if decision.rearm_ids:
+        await db.clear_low_battery_alerts(decision.rearm_ids)
+    if not decision.send:
+        return
+
+    msg = build_alert_message(decision, settings["threshold"], cfg, recipients)
+    try:
+        await asyncio.to_thread(send_email, cfg, msg)
+    except Exception:
+        # Nothing recorded, so the next status report retries.
+        logger.exception("Failed to send low-battery alert email")
+        return
+
+    await db.set_low_battery_alerted([f["id"] for f in decision.low_frames], now.isoformat())
+    logger.info("Sent low-battery alert for %d frame(s)", len(decision.low_frames))
