@@ -10,6 +10,7 @@ from PIL import Image
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import config
+import notifier
 from main import app, db
 
 transport = ASGITransport(app=app)
@@ -181,6 +182,63 @@ async def test_zero_wake_interval_rejected():
         })
     assert r.status_code == 303
     assert "error=" in r.headers["location"]
+
+
+# ── Low-battery alerts ──────────────────────────────────────────────────────
+
+LOW_STATUS = {
+    "battery_connected": True, "battery_percent": 12, "battery_mv": 3550,
+    "charging": False, "usb_connected": False,
+}
+
+
+@pytest.fixture
+async def alerts_enabled(monkeypatch):
+    """SMTP configured + recipient saved; returns the list of 'sent' messages."""
+    monkeypatch.setattr(config, "SMTP_HOST", "smtp.test")
+    monkeypatch.setattr(config, "SMTP_FROM", "frames@test")
+    messages = []
+    monkeypatch.setattr(notifier, "send_email", lambda cfg, msg: messages.append(msg))
+    await db.set_alert_settings("me@example.com", 20)
+    return messages
+
+
+@pytest.mark.asyncio
+async def test_low_status_report_sends_alert_email(alerts_enabled):
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        r = await client.post("/api/status", headers=HEADERS, json=LOW_STATUS)
+    assert r.status_code == 200
+    assert len(alerts_enabled) == 1
+    assert alerts_enabled[0]["Subject"] == "Photo frame battery low: AA:BB:CC:DD:EE:FF (12%)"
+    assert alerts_enabled[0]["To"] == "me@example.com"
+
+
+@pytest.mark.asyncio
+async def test_repeat_low_status_report_does_not_resend(alerts_enabled):
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await client.post("/api/status", headers=HEADERS, json=LOW_STATUS)
+        await client.post("/api/status", headers=HEADERS, json=LOW_STATUS)
+    assert len(alerts_enabled) == 1
+
+
+@pytest.mark.asyncio
+async def test_healthy_status_report_sends_nothing(alerts_enabled):
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await client.post("/api/status", headers=HEADERS,
+                          json={**LOW_STATUS, "battery_percent": 80})
+    assert alerts_enabled == []
+
+
+@pytest.mark.asyncio
+async def test_status_report_succeeds_when_alert_check_errors(alerts_enabled, monkeypatch):
+    async def broken():
+        raise RuntimeError("settings unavailable")
+
+    monkeypatch.setattr(db, "get_alert_settings", broken)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        r = await client.post("/api/status", headers=HEADERS, json=LOW_STATUS)
+    assert r.status_code == 200
+    assert alerts_enabled == []
 
 
 # ── Health ───────────────────────────────────────────────────────────────

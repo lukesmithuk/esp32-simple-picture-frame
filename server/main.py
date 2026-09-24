@@ -1,8 +1,10 @@
 import io
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import (
+    BackgroundTasks,
     Depends,
     FastAPI,
     File,
@@ -19,6 +21,7 @@ from PIL import Image
 from pydantic import BaseModel
 
 import config
+import notifier
 from database import Database
 
 db = Database(config.DB_PATH)
@@ -116,8 +119,11 @@ class FrameStatus(BaseModel):
 
 
 @app.post("/api/status")
-async def api_status(status: FrameStatus, frame_id: int = Depends(get_frame_id)):
+async def api_status(status: FrameStatus, background_tasks: BackgroundTasks,
+                     frame_id: int = Depends(get_frame_id)):
     await db.update_frame_status(frame_id, status.model_dump())
+    # Runs after the response is sent, so it never extends the frame's awake time.
+    background_tasks.add_task(notifier.check_battery_alerts, db)
     return {"ok": True}
 
 
@@ -308,7 +314,6 @@ async def save_frame_settings(frame_id: int, request: Request):
     if use_custom:
         result = _validate_wake_interval(form)
         if isinstance(result, str):
-            from urllib.parse import quote
             return RedirectResponse(
                 url=f"/frames/{frame_id}?error={quote(result)}", status_code=303)
         hours, minutes, seconds = result
@@ -361,7 +366,6 @@ async def save_settings(request: Request):
     form = await request.form()
     result = _validate_wake_interval(form)
     if isinstance(result, str):
-        from urllib.parse import quote
         return RedirectResponse(url=f"/?error={quote(result)}", status_code=303)
     hours, minutes, seconds = result
     await db.set_wake_interval(hours, minutes, seconds)
