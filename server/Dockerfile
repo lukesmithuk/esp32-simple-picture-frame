@@ -18,7 +18,7 @@ RUN apt-get update \
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/* requirements-runtime.txt
 
-COPY main.py config.py database.py ./
+COPY main.py config.py database.py notifier.py ./
 COPY templates/ ./templates/
 COPY static/ ./static/
 
