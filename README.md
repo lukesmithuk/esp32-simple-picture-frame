@@ -47,6 +47,16 @@ Open `http://<server-ip>:8080` to upload photos and monitor frames.
 (`sudo systemctl is-enabled docker`; enable with `sudo systemctl enable docker`),
 the container comes back after a reboot. No extra systemd unit needed.
 
+**Updating** to the latest published image:
+```bash
+cd server
+./update.sh    # pull image, stop, back up DB, start, wait for /healthz, show logs
+```
+The DB backup goes to `server/data/backups/` (newest 5 kept). The pull happens
+before anything is stopped, so a network failure leaves the running server untouched.
+If the new container doesn't become healthy, the script prints its logs, the
+backup path and the previous image ID for rollback.
+
 **Migrating from an existing tarball install:**
 ```bash
 cd server
@@ -85,13 +95,14 @@ The server can email you when any frame's battery drops below a threshold.
    PHOTOFRAME_SMTP_USER=you@gmail.com
    PHOTOFRAME_SMTP_PASSWORD=your-app-password
    ```
-   Then run `docker compose up -d` to restart with the new settings.
-2. On the dashboard, under **Global Settings → Battery alerts**, enter the
-   recipient address (comma-separate several) and the threshold (default 20%),
-   then click **Save**. Use **Send test email** to check your settings.
+   Then run `./update.sh` (or just `docker compose up -d`) to restart with the
+   new settings.
 
    For the tarball/systemd install, add the same lines to `server/server.env`
    and run `sudo systemctl restart photoframe-server`.
+2. On the dashboard, under **Global Settings → Battery alerts**, enter the
+   recipient address (comma-separate several) and the threshold (default 20%),
+   then click **Save**. Use **Send test email** to check your settings.
 
 You get one email listing every low frame, then a reminder every 24 hours
 until they're charged. A frame re-arms once it's charging, on USB, or back

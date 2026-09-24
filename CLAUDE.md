@@ -81,7 +81,8 @@ cd server && cp .env.example .env && docker compose up -d
 Image: `ghcr.io/lukesmithuk/esp32-simple-picture-frame` (multi-arch amd64/arm64/armv7,
 built + published by `.github/workflows/ci.yml` on push to `main`). Data (DB, images,
 thumbs) persists in `server/data/` via `PHOTOFRAME_DATA_DIR=/data` (see `config.py`).
-Boot-start relies on compose `restart: unless-stopped` + Docker's daemon being enabled
+Update a running deployment with `server/update.sh` (pull → stop → DB backup to
+`data/backups/` → up → wait for `/healthz`). Boot-start relies on compose `restart: unless-stopped` + Docker's daemon being enabled
 (`systemctl enable docker`) — no dedicated systemd unit. Migrate an old tarball install
 with `server/migrate-to-docker.sh /path/to/old/install` (full guide:
 `server/MIGRATION.md`).
