@@ -1,3 +1,4 @@
+import asyncio
 import io
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -237,20 +238,25 @@ async def serve_thumb(filename: str):
 # ── Web UI: Dashboard ──────────────────────────────────────────────────
 
 @app.get("/")
-async def index(request: Request, saved: int | None = None, error: str | None = None):
+async def index(request: Request, saved: int | None = None, error: str | None = None,
+                notice: str | None = None):
     frames = await db.list_frames()
     # Add image count per frame (single query).
     counts = await db.get_frame_image_counts()
     for frame in frames:
         frame["image_count"] = counts.get(frame["id"], 0)
     wake = await db.get_wake_interval()
+    alerts = await db.get_alert_settings()
     nav = await _nav_context()
     return templates.TemplateResponse(request, "index.html", context={
         **nav,
         "frames": frames,
         "wake": wake,
+        "alerts": alerts,
+        "smtp_configured": notifier.smtp_config().configured,
         "saved": saved,
         "error": error,
+        "notice": notice,
     })
 
 
@@ -370,6 +376,55 @@ async def save_settings(request: Request):
     hours, minutes, seconds = result
     await db.set_wake_interval(hours, minutes, seconds)
     return RedirectResponse(url="/?saved=1", status_code=303)
+
+
+# ── Web UI: Battery alerts ─────────────────────────────────────────────
+
+def _validate_alert_settings(form) -> tuple[str, int] | str:
+    """Validate alert form data. Returns (email, threshold) or error string."""
+    recipients = notifier.parse_recipients(str(form.get("alert_email", "")))
+    if recipients is None:
+        return "Invalid email address"
+    try:
+        threshold = int(form.get("battery_alert_threshold", ""))
+    except (ValueError, TypeError):
+        return "Invalid battery threshold"
+    if not (1 <= threshold <= 99):
+        return "Battery threshold must be 1–99%"
+    return (", ".join(recipients), threshold)
+
+
+@app.post("/settings/alerts")
+async def save_alert_settings(request: Request):
+    form = await request.form()
+    result = _validate_alert_settings(form)
+    if isinstance(result, str):
+        return RedirectResponse(url=f"/?error={quote(result)}", status_code=303)
+    email, threshold = result
+    await db.set_alert_settings(email, threshold)
+    return RedirectResponse(url="/?saved=1", status_code=303)
+
+
+@app.post("/settings/alerts/test")
+async def send_test_alert():
+    cfg = notifier.smtp_config()
+    settings = await db.get_alert_settings()
+    recipients = notifier.parse_recipients(settings["email"]) or []
+    if not cfg.configured:
+        error = "SMTP not configured. Set PHOTOFRAME_SMTP_HOST in .env."
+    elif not recipients:
+        error = "No alert recipient saved"
+    else:
+        msg = notifier.build_test_message(settings["threshold"], cfg, recipients)
+        try:
+            # Synchronous from the user's view, so SMTP errors show immediately.
+            await asyncio.to_thread(notifier.send_email, cfg, msg)
+        except Exception as e:
+            error = f"Test email failed: {e}"
+        else:
+            notice = f"Test email sent to {settings['email']}"
+            return RedirectResponse(url=f"/?notice={quote(notice)}", status_code=303)
+    return RedirectResponse(url=f"/?error={quote(error)}", status_code=303)
 
 
 # ── Web UI: Logs ────────────────────────────────────────────────────────
