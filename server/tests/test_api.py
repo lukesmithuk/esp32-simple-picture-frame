@@ -312,6 +312,7 @@ async def test_test_email_smtp_failure_shows_error(alerts_enabled, monkeypatch):
         r = await client.post("/settings/alerts/test")
     location = unquote(r.headers["location"])
     assert "error=Test email failed:" in location
+    assert "SMTPAuthenticationError" in location
     assert "bad credentials" in location
 
 
@@ -322,7 +323,10 @@ async def test_test_email_requires_smtp(monkeypatch):
     async with AsyncClient(transport=transport, base_url="http://test",
                            follow_redirects=False) as client:
         r = await client.post("/settings/alerts/test")
-    assert "SMTP not configured" in unquote(r.headers["location"])
+    location = unquote(r.headers["location"])
+    assert "SMTP not configured" in location
+    assert ("SMTP not configured. Set PHOTOFRAME_SMTP_HOST "
+            "(and SMTP_USER or SMTP_FROM) in .env.") in location
 
 
 @pytest.mark.asyncio

@@ -1,5 +1,6 @@
 import asyncio
 import io
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import quote
@@ -26,6 +27,7 @@ import notifier
 from database import Database
 
 db = Database(config.DB_PATH)
+logger = logging.getLogger("uvicorn.error")
 
 
 @asynccontextmanager
@@ -411,7 +413,7 @@ async def send_test_alert():
     settings = await db.get_alert_settings()
     recipients = notifier.parse_recipients(settings["email"]) or []
     if not cfg.configured:
-        error = "SMTP not configured. Set PHOTOFRAME_SMTP_HOST in .env."
+        error = "SMTP not configured. Set PHOTOFRAME_SMTP_HOST (and SMTP_USER or SMTP_FROM) in .env."
     elif not recipients:
         error = "No alert recipient saved"
     else:
@@ -420,7 +422,8 @@ async def send_test_alert():
             # Synchronous from the user's view, so SMTP errors show immediately.
             await asyncio.to_thread(notifier.send_email, cfg, msg)
         except Exception as e:
-            error = f"Test email failed: {e}"
+            logger.warning("Test email failed", exc_info=True)
+            error = f"Test email failed: {type(e).__name__}: {e}"
         else:
             notice = f"Test email sent to {settings['email']}"
             return RedirectResponse(url=f"/?notice={quote(notice)}", status_code=303)
