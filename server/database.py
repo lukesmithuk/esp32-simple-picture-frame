@@ -35,7 +35,8 @@ class Database:
                 battery_connected INTEGER,
                 sd_free_kb INTEGER,
                 firmware_version TEXT,
-                logs TEXT DEFAULT ''
+                logs TEXT DEFAULT '',
+                low_battery_alerted_at TEXT
             );
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
@@ -62,6 +63,9 @@ class Database:
         # Migration: add per-frame wake interval columns if missing.
         await self._migrate_frame_wake_columns()
 
+        # Migration: add low-battery alert state column if missing.
+        await self._migrate_low_battery_alert_column()
+
         # Migration: assign unassigned images to all existing frames.
         await self._migrate_assign_images()
 
@@ -75,6 +79,15 @@ class Database:
             await self.db.execute("ALTER TABLE frames ADD COLUMN wake_seconds INTEGER")
             await self.db.commit()
             logger.info("Migrated: added wake interval columns to frames table")
+
+    async def _migrate_low_battery_alert_column(self):
+        """Add low_battery_alerted_at to frames if missing."""
+        cursor = await self.db.execute("PRAGMA table_info(frames)")
+        columns = {row["name"] for row in await cursor.fetchall()}
+        if "low_battery_alerted_at" not in columns:
+            await self.db.execute("ALTER TABLE frames ADD COLUMN low_battery_alerted_at TEXT")
+            await self.db.commit()
+            logger.info("Migrated: added low_battery_alerted_at column to frames table")
 
     async def _migrate_assign_images(self):
         """One-time migration: assign existing images to all frames.
@@ -310,6 +323,22 @@ class Database:
         )
         await self.db.commit()
 
+    async def clear_low_battery_alerts(self, frame_ids: list[int]):
+        """Re-arm low-battery alerts for these frames."""
+        await self.db.executemany(
+            "UPDATE frames SET low_battery_alerted_at = NULL WHERE id = ?",
+            [(fid,) for fid in frame_ids],
+        )
+        await self.db.commit()
+
+    async def set_low_battery_alerted(self, frame_ids: list[int], timestamp: str):
+        """Record that a low-battery alert covering these frames was sent."""
+        await self.db.executemany(
+            "UPDATE frames SET low_battery_alerted_at = ? WHERE id = ?",
+            [(timestamp, fid) for fid in frame_ids],
+        )
+        await self.db.commit()
+
     # -- Logs --
 
     _LOG_MAX_BYTES = 512 * 1024
@@ -356,6 +385,17 @@ class Database:
         await self.set_setting("wake_interval_hours", str(hours))
         await self.set_setting("wake_interval_minutes", str(minutes))
         await self.set_setting("wake_interval_seconds", str(seconds))
+
+    async def get_alert_settings(self) -> dict:
+        """Returns {email, threshold}. Default: no recipient, 20%."""
+        return {
+            "email": await self.get_setting("alert_email", ""),
+            "threshold": int(await self.get_setting("battery_alert_threshold", "20")),
+        }
+
+    async def set_alert_settings(self, email: str, threshold: int):
+        await self.set_setting("alert_email", email)
+        await self.set_setting("battery_alert_threshold", str(threshold))
 
     # -- Shuffle --
 
