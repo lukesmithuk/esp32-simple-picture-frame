@@ -90,6 +90,9 @@ The server can email you when any frame's battery drops below a threshold.
    recipient address (comma-separate several) and the threshold (default 20%),
    then click **Save**. Use **Send test email** to check your settings.
 
+   For the tarball/systemd install, add the same lines to `server/server.env`
+   and run `sudo systemctl restart photoframe-server`.
+
 You get one email listing every low frame, then a reminder every 24 hours
 until they're charged. A frame re-arms once it's charging, on USB, or back
 above the threshold + 5%.

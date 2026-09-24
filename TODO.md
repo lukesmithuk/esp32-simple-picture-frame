@@ -46,6 +46,7 @@
 - [ ] Remove API key from database — stored unnecessarily in frames table; remove column or hash it
 - [ ] Constant-time key comparison — use `hmac.compare_digest()` instead of `!=` for API key checks
 - [ ] Sanitize upload filenames — strip special characters, limit length
+- [ ] Rate-limit / CSRF-protect `POST /settings/alerts/test` — unauthenticated, so any page the owner visits could trigger test emails through their SMTP account
 
 ## Web UI
 
