@@ -341,6 +341,8 @@ migration script (`server/migrate-to-docker.sh`) copies an existing tarball
 install's data — verified safe because the DB stores relative filenames and the
 schema is shared.
 
+---
+
 ## ADR-022 — Low-battery email alerts via SMTP, driven by status reports
 
 **Status:** Accepted
@@ -361,6 +363,7 @@ works with Gmail app passwords or any relay. Driving the check from status
 reports avoids a scheduler: frames already report on every wake. Running it
 after the response means SMTP latency never extends the frame's awake time,
 which matters for battery life. One digest per event, with a shared 24h cycle,
-keeps multi-frame households to one email a day. A frame that dies while low
+keeps multi-frame households to roughly one email a day (plus one whenever
+another frame newly goes low). A frame that dies while low
 keeps appearing in reminders because other frames' reports drive the check.
 That is intentional, since a silent low frame is almost certainly flat.

@@ -1,7 +1,11 @@
 # Low-battery email alerts — Design
 
 **Date:** 2026-09-24
-**Status:** Approved (pending spec review)
+**Status:** Implemented (PR #23, ADR-022). The implementation adds a few
+review-driven details not in this spec: a negative battery % is treated as
+unknown, emails carry Date/Message-ID headers, a non-numeric
+`PHOTOFRAME_SMTP_PORT` falls back to 587, and test-email errors read
+`Test email failed: <ExceptionType>: <message>`.
 
 ## Summary
 

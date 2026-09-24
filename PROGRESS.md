@@ -9,6 +9,8 @@
 - **Dashboard card**: recipient + threshold settings and a "Send test email" button
 - **Background task**: check runs after the `/api/status` response, so a frame's awake time is unaffected
 - **Test isolation**: suite now runs in a temp data dir (previously wiped `server/photoframe.db`)
+- **`server/update.sh`**: one-command Docker update (pull, stop, DB backup, start, wait for `/healthz`)
+- **Packaging fix**: `notifier.py` added to the Dockerfile COPY list and the release tarball
 - No firmware changes needed.
 
 ---

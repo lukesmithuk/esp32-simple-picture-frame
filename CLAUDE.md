@@ -81,8 +81,9 @@ cd server && cp .env.example .env && docker compose up -d
 Image: `ghcr.io/lukesmithuk/esp32-simple-picture-frame` (multi-arch amd64/arm64/armv7,
 built + published by `.github/workflows/ci.yml` on push to `main`). Data (DB, images,
 thumbs) persists in `server/data/` via `PHOTOFRAME_DATA_DIR=/data` (see `config.py`).
-Update a running deployment with `server/update.sh` (pull → stop → DB backup to
-`data/backups/` → up → wait for `/healthz`). Boot-start relies on compose `restart: unless-stopped` + Docker's daemon being enabled
+Update a running deployment with `git pull && server/update.sh` (plain `docker pull` →
+stop → DB backup to `data/backups/` → up → wait for `/healthz`). Boot-start relies on
+compose `restart: unless-stopped` + Docker's daemon being enabled
 (`systemctl enable docker`) — no dedicated systemd unit. Migrate an old tarball install
 with `server/migrate-to-docker.sh /path/to/old/install` (full guide:
 `server/MIGRATION.md`).
@@ -94,6 +95,7 @@ PHOTOFRAME_API_KEY=yourkey ./run.sh # start for testing
 ./install-service.sh               # install as systemd service
 ```
 **Uninstall:** `./uninstall.sh` (removes systemd service, optionally deletes data)
+
 Env vars (API key, `PHOTOFRAME_SMTP_*`) live in `server/server.env` for the systemd install, not `.env`.
 
 **Run tests** — build the venv with the project's Python (server targets 3.14;

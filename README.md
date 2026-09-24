@@ -50,12 +50,19 @@ the container comes back after a reboot. No extra systemd unit needed.
 **Updating** to the latest published image:
 ```bash
 cd server
+git pull       # refresh compose.yaml and the scripts (first time: fetches update.sh)
 ./update.sh    # pull image, stop, back up DB, start, wait for /healthz, show logs
 ```
-The DB backup goes to `server/data/backups/` (newest 5 kept). The pull happens
-before anything is stopped, so a network failure leaves the running server untouched.
-If the new container doesn't become healthy, the script prints its logs, the
-backup path and the previous image ID for rollback.
+The DB backup goes to `server/data/backups/` (newest 5 kept). The image pull
+happens before anything is stopped, so a failed pull leaves the running server
+untouched. If the new container doesn't become healthy, the script prints its
+logs, the backup path and the previous image ID. To roll back:
+```bash
+docker compose stop
+cp data/backups/photoframe-<timestamp>.db data/photoframe.db
+docker tag <previous-image-id> ghcr.io/lukesmithuk/esp32-simple-picture-frame:latest
+docker compose up -d
+```
 
 **Migrating from an existing tarball install:**
 ```bash
@@ -98,15 +105,19 @@ The server can email you when any frame's battery drops below a threshold.
    Then run `./update.sh` (or just `docker compose up -d`) to restart with the
    new settings.
 
-   For the tarball/systemd install, add the same lines to `server/server.env`
-   and run `sudo systemctl restart photoframe-server`.
+   For the tarball/systemd install, add the same lines to `server.env` in the
+   install directory (`photoframe-server/server.env` for the tarball,
+   `server/server.env` if you used `install-service.sh`) and run
+   `sudo systemctl restart photoframe-server`. Re-running `setup.sh` or
+   `install-service.sh` rewrites `server.env`, so re-add the
+   `PHOTOFRAME_SMTP_*` lines afterwards.
 2. On the dashboard, under **Global Settings → Battery alerts**, enter the
    recipient address (comma-separate several) and the threshold (default 20%),
    then click **Save**. Use **Send test email** to check your settings.
 
 You get one email listing every low frame, then a reminder every 24 hours
-until they're charged. A frame re-arms once it's charging, on USB, or back
-above the threshold + 5%.
+until they're charged. A frame re-arms once it's charging, on USB, has no
+battery, or reaches the threshold + 5% (25% at the default 20%).
 
 ### Server development on Windows
 
@@ -120,7 +131,7 @@ venv\Scripts\python -m pytest                 # run tests
 $env:PHOTOFRAME_API_KEY="changeme"; venv\Scripts\python main.py   # run locally
 ```
 
-The `*.sh` scripts (`setup.sh`, `run.sh`, `uninstall.sh`, `migrate-to-docker.sh`) target Linux.
+The `*.sh` scripts (`setup.sh`, `run.sh`, `uninstall.sh`, `migrate-to-docker.sh`, `update.sh`) target Linux.
 
 ### Frame Firmware
 
@@ -200,9 +211,12 @@ components/
   wifi_fetch/            WiFi, NTP, HTTP client
 server/                  Python photo server
   main.py                FastAPI app
+  config.py              Env-var settings (PHOTOFRAME_*)
   database.py            SQLite (images, frames, history)
+  notifier.py            Low-battery email alerts (SMTP)
   templates/             Web UI (Jinja2)
-  tests/                 pytest (database + API)
+  tests/                 pytest (database, API, config, notifier)
+  update.sh              Update a Docker deployment
 ```
 
 ## License

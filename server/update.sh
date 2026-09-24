@@ -27,9 +27,13 @@ if [ ! -f compose.yaml ]; then
 fi
 
 OLD_IMAGE="$(docker inspect -f '{{.Image}}' "$CONTAINER" 2>/dev/null || true)"
+IMAGE="$(docker compose config --images | head -n 1)"
 
-echo "Pulling latest image..."
-docker compose pull
+# Plain `docker pull`, not `docker compose pull`: compose.yaml also has
+# `build: .`, and compose treats a failed pull of a buildable service as a
+# warning (exit 0). A failed pull must abort before anything is stopped.
+echo "Pulling $IMAGE..."
+docker pull "$IMAGE"
 
 # Stop before copying so SQLite is not mid-write during the backup.
 BACKUP=""
@@ -68,6 +72,8 @@ if [ -z "$healthy" ]; then
     echo "To roll back:"
     [ -n "$BACKUP" ] && echo "  database backup: $BACKUP (copy over $DATA_DIR/photoframe.db while stopped)"
     [ -n "$OLD_IMAGE" ] && echo "  previous image:  $OLD_IMAGE"
+    echo "  steps: docker compose stop; cp <backup> $DATA_DIR/photoframe.db;"
+    echo "         docker tag <previous image> $IMAGE; docker compose up -d"
     exit 1
 fi
 
