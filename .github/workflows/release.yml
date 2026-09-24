@@ -32,6 +32,7 @@ jobs:
           cp server/config.py "$STAGING/"
           cp server/database.py "$STAGING/"
           cp server/main.py "$STAGING/"
+          cp server/notifier.py "$STAGING/"
           cp server/run.sh "$STAGING/"
           cp server/setup.sh "$STAGING/"
           cp server/uninstall.sh "$STAGING/"

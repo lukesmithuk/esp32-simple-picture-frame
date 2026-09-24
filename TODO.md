@@ -34,6 +34,7 @@
 - [ ] Measure deep-sleep current consumption
 - [x] Battery status — ADC enabled, voltage/percent/charge logged and pushed to server
 - [ ] Low-battery warning — display message on EPD when battery critically low
+- [x] Low-battery email alert — server emails a digest when any frame drops below a threshold (ADR-022)
 
 ## Security
 
@@ -45,6 +46,7 @@
 - [ ] Remove API key from database — stored unnecessarily in frames table; remove column or hash it
 - [ ] Constant-time key comparison — use `hmac.compare_digest()` instead of `!=` for API key checks
 - [ ] Sanitize upload filenames — strip special characters, limit length
+- [ ] Rate-limit / CSRF-protect `POST /settings/alerts/test` — unauthenticated, so any page the owner visits could trigger test emails through their SMTP account
 
 ## Web UI
 

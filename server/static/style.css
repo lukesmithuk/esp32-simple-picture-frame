@@ -364,6 +364,10 @@ body {
   padding: 1.25rem;
 }
 
+.settings-card + .settings-card {
+  margin-top: 1rem;
+}
+
 .settings-form {
   display: flex;
   align-items: center;
@@ -844,6 +848,15 @@ body {
   font-size: 0.75rem;
   color: var(--text-muted);
   margin-top: 0.5rem;
+}
+
+.alert-email-input {
+  width: 18rem;
+  max-width: 100%;
+}
+
+.alert-test-form {
+  margin-top: 0.75rem;
 }
 
 /* ── Image assignment ────────────────────────────────────────────────── */

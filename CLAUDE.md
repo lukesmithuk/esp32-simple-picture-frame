@@ -81,7 +81,9 @@ cd server && cp .env.example .env && docker compose up -d
 Image: `ghcr.io/lukesmithuk/esp32-simple-picture-frame` (multi-arch amd64/arm64/armv7,
 built + published by `.github/workflows/ci.yml` on push to `main`). Data (DB, images,
 thumbs) persists in `server/data/` via `PHOTOFRAME_DATA_DIR=/data` (see `config.py`).
-Boot-start relies on compose `restart: unless-stopped` + Docker's daemon being enabled
+Update a running deployment with `git pull && server/update.sh` (plain `docker pull` →
+stop → DB backup to `data/backups/` → up → wait for `/healthz`). Boot-start relies on
+compose `restart: unless-stopped` + Docker's daemon being enabled
 (`systemctl enable docker`) — no dedicated systemd unit. Migrate an old tarball install
 with `server/migrate-to-docker.sh /path/to/old/install` (full guide:
 `server/MIGRATION.md`).
@@ -94,6 +96,8 @@ PHOTOFRAME_API_KEY=yourkey ./run.sh # start for testing
 ```
 **Uninstall:** `./uninstall.sh` (removes systemd service, optionally deletes data)
 
+Env vars (API key, `PHOTOFRAME_SMTP_*`) live in `server/server.env` for the systemd install, not `.env`.
+
 **Run tests** — build the venv with the project's Python (server targets 3.14;
 a bare `python` may be older and lack deps). One-time setup, then run:
 ```bash
@@ -103,7 +107,7 @@ venv/Scripts/python -m pip install -r requirements.txt   # Linux: venv/bin/pytho
 venv/Scripts/python -m pytest -q                          # Linux: venv/bin/python
 ```
 
-**Lint:** `cd server && python -m ruff check .` (config in `server/ruff.toml`).
+**Lint:** `cd server && venv/Scripts/python -m ruff check .` (Linux: `venv/bin/python`; config in `server/ruff.toml`).
 
 ### Server Architecture
 
@@ -115,6 +119,8 @@ venv/Scripts/python -m pytest -q                          # Linux: venv/bin/pyth
 - **Database**: `photoframe.db` (SQLite, auto-created) under `DATA_DIR` — `server/` for native dev, `/data` (volume) in the container; set via `PHOTOFRAME_DATA_DIR`
 - **Timestamps**: Stored as UTC ISO 8601 with `+00:00` suffix, converted to local time in browser
 - **Multi-frame**: Per-frame image assignment via `frame_images` table, per-frame wake interval, frame naming
+- **Battery alerts**: `notifier.py` — after each `/api/status`, a background task checks *all* frames and sends one SMTP digest email (stdlib `smtplib`). SMTP creds in `.env` (`PHOTOFRAME_SMTP_*`); recipient + threshold in the `settings` table via the dashboard. State: `frames.low_battery_alerted_at`. See ADR-022
+- **Tests**: `tests/conftest.py` points `PHOTOFRAME_DATA_DIR` at a temp dir — `test_api.py` wipes the DB/images between tests, so never bypass it. It also resets `notifier._lock` per test (pytest-asyncio uses a fresh loop each test). Stub email by monkeypatching `notifier.send_email` (looked up at call time, so it covers `main.py` too); httpx `ASGITransport` awaits `BackgroundTasks`, so API tests can assert on sent mail right after the request
 
 ## Component Map
 

@@ -17,6 +17,9 @@
         {% if error %}
         <div class="toast toast-error">{{ error }}</div>
         {% endif %}
+        {% if notice %}
+        <div class="toast">{{ notice }}</div>
+        {% endif %}
 
         <!-- Frames -->
         <section class="section" id="frames">
@@ -101,6 +104,29 @@
                     <button type="submit" class="btn btn-save">Save</button>
                 </form>
                 <p class="settings-hint">Applies to frames without a custom wake interval.</p>
+            </div>
+            <div class="settings-card">
+                <form action="/settings/alerts" method="post" class="settings-form">
+                    <span class="settings-label">Battery alerts</span>
+                    <input type="text" name="alert_email" value="{{ alerts.email }}"
+                           placeholder="you@example.com" class="text-input alert-email-input"
+                           aria-label="Alert email address">
+                    <div class="time-group">
+                        <input type="number" name="battery_alert_threshold" value="{{ alerts.threshold }}"
+                               min="1" max="99" class="time-input" aria-label="Battery alert threshold">
+                        <span class="time-unit">%</span>
+                    </div>
+                    <button type="submit" class="btn btn-save">Save</button>
+                </form>
+                <form action="/settings/alerts/test" method="post" class="alert-test-form">
+                    <button type="submit" class="btn btn-primary">Send test email</button>
+                </form>
+                <p class="settings-hint">
+                    {% if not smtp_configured %}SMTP not configured. Set PHOTOFRAME_SMTP_HOST (and SMTP_USER or SMTP_FROM) in .env.
+                    {% elif not alerts.email %}Alerts off: no recipient set.
+                    {% else %}Alerts on: emailing {{ alerts.email }} when a frame drops below {{ alerts.threshold }}%.
+                    {% endif %}
+                </p>
             </div>
         </section>
 

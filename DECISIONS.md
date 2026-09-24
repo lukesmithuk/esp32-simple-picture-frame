@@ -340,3 +340,30 @@ Rooting data at a volume keeps photos and the DB across image upgrades. A
 migration script (`server/migrate-to-docker.sh`) copies an existing tarball
 install's data — verified safe because the DB stores relative filenames and the
 schema is shared.
+
+---
+
+## ADR-022 — Low-battery email alerts via SMTP, driven by status reports
+
+**Status:** Accepted
+**Date:** 2026-09-24
+
+**Decision:** The server emails a configurable recipient when any frame's
+battery drops below a threshold (default 20%). The check runs as a FastAPI
+background task after every `POST /api/status` and evaluates **all** frames,
+sending one combined email. A frame re-arms once it is charging, on USB, has
+no battery, or reaches threshold + 5%. While any low frame remains, a reminder
+goes out every 24h. Each frame's alert state is a `frames.low_battery_alerted_at`
+timestamp, written only after a successful send, and an in-process
+`asyncio.Lock` prevents duplicate sends. SMTP credentials come from `.env`
+(`PHOTOFRAME_SMTP_*`); the recipient and threshold are dashboard settings.
+
+**Rationale:** Stdlib `smtplib` adds no dependencies on the Pi Zero 2W, and
+works with Gmail app passwords or any relay. Driving the check from status
+reports avoids a scheduler: frames already report on every wake. Running it
+after the response means SMTP latency never extends the frame's awake time,
+which matters for battery life. One digest per event, with a shared 24h cycle,
+keeps multi-frame households to roughly one email a day (plus one whenever
+another frame newly goes low). A frame that dies while low
+keeps appearing in reminders because other frames' reports drive the check.
+That is intentional, since a silent low frame is almost certainly flat.

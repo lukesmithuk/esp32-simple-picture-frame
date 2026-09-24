@@ -1,7 +1,9 @@
 import io
 import shutil
+import smtplib
 import sys
 from pathlib import Path
+from urllib.parse import unquote
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -10,6 +12,7 @@ from PIL import Image
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import config
+import notifier
 from main import app, db
 
 transport = ASGITransport(app=app)
@@ -181,6 +184,191 @@ async def test_zero_wake_interval_rejected():
         })
     assert r.status_code == 303
     assert "error=" in r.headers["location"]
+
+
+# ── Low-battery alerts ──────────────────────────────────────────────────────
+
+LOW_STATUS = {
+    "battery_connected": True, "battery_percent": 12, "battery_mv": 3550,
+    "charging": False, "usb_connected": False,
+}
+
+
+@pytest.fixture
+async def alerts_enabled(monkeypatch):
+    """SMTP configured + recipient saved; returns the list of 'sent' messages."""
+    monkeypatch.setattr(config, "SMTP_HOST", "smtp.test")
+    monkeypatch.setattr(config, "SMTP_FROM", "frames@test")
+    messages = []
+    monkeypatch.setattr(notifier, "send_email", lambda cfg, msg: messages.append(msg))
+    await db.set_alert_settings("me@example.com", 20)
+    return messages
+
+
+@pytest.mark.asyncio
+async def test_low_status_report_sends_alert_email(alerts_enabled):
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        r = await client.post("/api/status", headers=HEADERS, json=LOW_STATUS)
+    assert r.status_code == 200
+    assert len(alerts_enabled) == 1
+    assert alerts_enabled[0]["Subject"] == "Photo frame battery low: AA:BB:CC:DD:EE:FF (12%)"
+    assert alerts_enabled[0]["To"] == "me@example.com"
+
+
+@pytest.mark.asyncio
+async def test_repeat_low_status_report_does_not_resend(alerts_enabled):
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await client.post("/api/status", headers=HEADERS, json=LOW_STATUS)
+        await client.post("/api/status", headers=HEADERS, json=LOW_STATUS)
+    assert len(alerts_enabled) == 1
+
+
+@pytest.mark.asyncio
+async def test_healthy_status_report_sends_nothing(alerts_enabled):
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await client.post("/api/status", headers=HEADERS,
+                          json={**LOW_STATUS, "battery_percent": 80})
+    assert alerts_enabled == []
+
+
+@pytest.mark.asyncio
+async def test_status_report_succeeds_when_alert_check_errors(alerts_enabled, monkeypatch):
+    async def broken():
+        raise RuntimeError("settings unavailable")
+
+    monkeypatch.setattr(db, "get_alert_settings", broken)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        r = await client.post("/api/status", headers=HEADERS, json=LOW_STATUS)
+    assert r.status_code == 200
+    assert alerts_enabled == []
+
+
+@pytest.mark.asyncio
+async def test_save_alert_settings_normalises_and_stores():
+    async with AsyncClient(transport=transport, base_url="http://test",
+                           follow_redirects=False) as client:
+        r = await client.post("/settings/alerts", data={
+            "alert_email": " me@example.com ,you@example.org ",
+            "battery_alert_threshold": "15",
+        })
+    assert r.status_code == 303
+    assert r.headers["location"] == "/?saved=1"
+    assert await db.get_alert_settings() == {
+        "email": "me@example.com, you@example.org", "threshold": 15,
+    }
+
+
+@pytest.mark.asyncio
+async def test_save_alert_settings_empty_email_disables():
+    await db.set_alert_settings("me@example.com", 20)
+    async with AsyncClient(transport=transport, base_url="http://test",
+                           follow_redirects=False) as client:
+        r = await client.post("/settings/alerts", data={
+            "alert_email": "", "battery_alert_threshold": "20",
+        })
+    assert r.headers["location"] == "/?saved=1"
+    assert (await db.get_alert_settings())["email"] == ""
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("email,threshold", [
+    ("not-an-email", "20"),
+    ("me@example.com\r\nBcc: evil@example.com", "20"),
+    ("me@example.com", "0"),
+    ("me@example.com", "100"),
+    ("me@example.com", "abc"),
+    ("me@example.com", ""),
+])
+async def test_save_alert_settings_rejects_invalid(email, threshold):
+    async with AsyncClient(transport=transport, base_url="http://test",
+                           follow_redirects=False) as client:
+        r = await client.post("/settings/alerts", data={
+            "alert_email": email, "battery_alert_threshold": threshold,
+        })
+    assert r.status_code == 303
+    assert "error=" in r.headers["location"]
+    assert await db.get_alert_settings() == {"email": "", "threshold": 20}
+
+
+@pytest.mark.asyncio
+async def test_test_email_success(alerts_enabled):
+    async with AsyncClient(transport=transport, base_url="http://test",
+                           follow_redirects=False) as client:
+        r = await client.post("/settings/alerts/test")
+    assert r.status_code == 303
+    location = unquote(r.headers["location"])
+    assert "notice=Test email sent to me@example.com" in location
+    assert [m["Subject"] for m in alerts_enabled] == ["Photo frame test email"]
+
+
+@pytest.mark.asyncio
+async def test_test_email_smtp_failure_shows_error(alerts_enabled, monkeypatch):
+    def boom(cfg, msg):
+        raise smtplib.SMTPAuthenticationError(535, b"bad credentials")
+
+    monkeypatch.setattr(notifier, "send_email", boom)
+    async with AsyncClient(transport=transport, base_url="http://test",
+                           follow_redirects=False) as client:
+        r = await client.post("/settings/alerts/test")
+    location = unquote(r.headers["location"])
+    assert "error=Test email failed:" in location
+    assert "SMTPAuthenticationError" in location
+    assert "bad credentials" in location
+
+
+@pytest.mark.asyncio
+async def test_test_email_requires_smtp(monkeypatch):
+    monkeypatch.setattr(config, "SMTP_HOST", "")
+    await db.set_alert_settings("me@example.com", 20)
+    async with AsyncClient(transport=transport, base_url="http://test",
+                           follow_redirects=False) as client:
+        r = await client.post("/settings/alerts/test")
+    location = unquote(r.headers["location"])
+    assert "SMTP not configured" in location
+    assert ("SMTP not configured. Set PHOTOFRAME_SMTP_HOST "
+            "(and SMTP_USER or SMTP_FROM) in .env.") in location
+
+
+@pytest.mark.asyncio
+async def test_test_email_requires_recipient(monkeypatch):
+    monkeypatch.setattr(config, "SMTP_HOST", "smtp.test")
+    monkeypatch.setattr(config, "SMTP_FROM", "frames@test")
+    async with AsyncClient(transport=transport, base_url="http://test",
+                           follow_redirects=False) as client:
+        r = await client.post("/settings/alerts/test")
+    assert "No alert recipient saved" in unquote(r.headers["location"])
+
+
+@pytest.mark.asyncio
+async def test_dashboard_hint_smtp_not_configured(monkeypatch):
+    monkeypatch.setattr(config, "SMTP_HOST", "")
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        r = await client.get("/")
+    assert "SMTP not configured. Set PHOTOFRAME_SMTP_HOST (and SMTP_USER or SMTP_FROM) in .env." in r.text
+
+
+@pytest.mark.asyncio
+async def test_dashboard_hint_no_recipient(monkeypatch):
+    monkeypatch.setattr(config, "SMTP_HOST", "smtp.test")
+    monkeypatch.setattr(config, "SMTP_FROM", "frames@test")
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        r = await client.get("/")
+    assert "Alerts off: no recipient set." in r.text
+
+
+@pytest.mark.asyncio
+async def test_dashboard_hint_alerts_on(alerts_enabled):
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        r = await client.get("/")
+    assert "Alerts on: emailing me@example.com when a frame drops below 20%." in r.text
+    assert 'name="alert_email" value="me@example.com"' in r.text
+
+
+@pytest.mark.asyncio
+async def test_dashboard_shows_notice_toast():
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        r = await client.get("/", params={"notice": "Hello there"})
+    assert '<div class="toast">Hello there</div>' in r.text
 
 
 # ── Health ───────────────────────────────────────────────────────────────

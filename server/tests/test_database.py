@@ -1,6 +1,7 @@
 import sys
 from pathlib import Path
 
+import aiosqlite
 import pytest
 
 # Add server directory to path so we can import modules
@@ -199,3 +200,72 @@ async def test_append_logs(db):
     logs = await db.get_logs(frame_id)
     assert "line 1" in logs
     assert "line 3" in logs
+
+
+# -- Low-battery alerts --
+
+
+@pytest.mark.asyncio
+async def test_frames_have_low_battery_alerted_at_column(db):
+    frame_id = await db.get_or_create_frame("AA:BB:CC:DD:EE:FF", "k")
+    frame = await db.get_frame(frame_id)
+    assert "low_battery_alerted_at" in frame
+    assert frame["low_battery_alerted_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_migration_adds_low_battery_alerted_at(tmp_path):
+    # A database created before this feature: frames table without the column.
+    path = tmp_path / "old.db"
+    conn = await aiosqlite.connect(path)
+    await conn.execute(
+        "CREATE TABLE frames (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "mac_address TEXT NOT NULL UNIQUE, api_key TEXT NOT NULL, name TEXT, "
+        "last_seen TEXT, battery_percent INTEGER, battery_mv INTEGER, "
+        "charging INTEGER, usb_connected INTEGER, battery_connected INTEGER, "
+        "sd_free_kb INTEGER, firmware_version TEXT, logs TEXT DEFAULT '')"
+    )
+    await conn.execute(
+        "INSERT INTO frames (mac_address, api_key) VALUES ('AA:BB:CC:DD:EE:FF', 'k')"
+    )
+    await conn.commit()
+    await conn.close()
+
+    d = Database(path)
+    await d.init()
+    try:
+        frames = await d.list_frames()
+        assert frames[0]["low_battery_alerted_at"] is None
+    finally:
+        await d.close()
+
+
+@pytest.mark.asyncio
+async def test_set_and_clear_low_battery_alerts(db):
+    a = await db.get_or_create_frame("AA:00:00:00:00:01", "k")
+    b = await db.get_or_create_frame("AA:00:00:00:00:02", "k")
+    c = await db.get_or_create_frame("AA:00:00:00:00:03", "k")
+    ts = "2026-09-24T12:00:00+00:00"
+
+    await db.set_low_battery_alerted([a, b], ts)
+    assert (await db.get_frame(a))["low_battery_alerted_at"] == ts
+    assert (await db.get_frame(b))["low_battery_alerted_at"] == ts
+    assert (await db.get_frame(c))["low_battery_alerted_at"] is None
+
+    await db.clear_low_battery_alerts([a])
+    assert (await db.get_frame(a))["low_battery_alerted_at"] is None
+    assert (await db.get_frame(b))["low_battery_alerted_at"] == ts
+
+
+@pytest.mark.asyncio
+async def test_alert_settings_defaults(db):
+    assert await db.get_alert_settings() == {"email": "", "threshold": 20}
+
+
+@pytest.mark.asyncio
+async def test_alert_settings_round_trip(db):
+    await db.set_alert_settings("me@example.com, you@example.org", 15)
+    assert await db.get_alert_settings() == {
+        "email": "me@example.com, you@example.org",
+        "threshold": 15,
+    }

@@ -19,8 +19,9 @@ the old install, Docker, and the data live.
 - Copies **`photoframe.db`, `images/`, and `thumbs/`** into `server/data/` (the
   Compose volume), merging in place so a `--force` re-run is safe.
 - **Refuses** to overwrite a non-empty `data/` unless you pass `--force`.
-- **Does NOT copy `server.env`** — so your **API key is not migrated
-  automatically**. You must set it yourself (Step 2). This is the easiest thing
+- **Does NOT copy `server.env`** — so your **API key (and any
+  `PHOTOFRAME_SMTP_*` email-alert settings) are not migrated automatically**.
+  You must set them yourself (Step 2). This is the easiest thing
   to get wrong: if the key changes, the frame fails to authenticate.
 
 Per-frame settings, wake intervals, image assignments, and logs all live in
@@ -44,10 +45,11 @@ git clone https://github.com/lukesmithuk/esp32-simple-picture-frame.git
 cd esp32-simple-picture-frame/server
 
 # 2. Reuse the EXISTING API key (the frame's SD-card `server_api_key` must keep
-#    matching it). Read it from the old install's server.env:
+#    matching it). Read it — and any email-alert settings — from the old
+#    install's server.env:
 cp .env.example .env
-grep PHOTOFRAME_API_KEY /path/to/old/photoframe-server/server.env
-nano .env                              # paste the key into PHOTOFRAME_API_KEY=
+grep -E 'PHOTOFRAME_(API_KEY|SMTP_)' /path/to/old/photoframe-server/server.env
+nano .env                              # paste the key into PHOTOFRAME_API_KEY= (and any SMTP_ lines)
 
 # 3. Migrate: stops+disables the old service, then copies DB + images + thumbs.
 ./migrate-to-docker.sh /path/to/old/photoframe-server

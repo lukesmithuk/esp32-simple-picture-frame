@@ -1,5 +1,20 @@
 # Progress Log
 
+## 2026-09-24 — Low-Battery Email Alerts
+
+- **Email alerts**: server emails a single digest when any frame's battery drops
+  below a threshold (default 20%), then a reminder every 24h until charged
+- **Re-arm hysteresis**: alert re-arms on charging/USB/no battery or at threshold + 5%
+- **SMTP via stdlib**: `PHOTOFRAME_SMTP_*` in `.env`; no new dependencies
+- **Dashboard card**: recipient + threshold settings and a "Send test email" button
+- **Background task**: check runs after the `/api/status` response, so a frame's awake time is unaffected
+- **Test isolation**: suite now runs in a temp data dir (previously wiped `server/photoframe.db`)
+- **`server/update.sh`**: one-command Docker update (pull, stop, DB backup, start, wait for `/healthz`)
+- **Packaging fix**: `notifier.py` added to the Dockerfile COPY list and the release tarball
+- No firmware changes needed.
+
+---
+
 ## 2026-04-12 — Phase 11: Multi-Frame Support
 
 - **Frame naming**: editable friendly name per frame via settings page
