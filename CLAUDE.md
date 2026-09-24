@@ -93,6 +93,7 @@ PHOTOFRAME_API_KEY=yourkey ./run.sh # start for testing
 ./install-service.sh               # install as systemd service
 ```
 **Uninstall:** `./uninstall.sh` (removes systemd service, optionally deletes data)
+Env vars (API key, `PHOTOFRAME_SMTP_*`) live in `server/server.env` for the systemd install, not `.env`.
 
 **Run tests** — build the venv with the project's Python (server targets 3.14;
 a bare `python` may be older and lack deps). One-time setup, then run:
@@ -103,7 +104,7 @@ venv/Scripts/python -m pip install -r requirements.txt   # Linux: venv/bin/pytho
 venv/Scripts/python -m pytest -q                          # Linux: venv/bin/python
 ```
 
-**Lint:** `cd server && python -m ruff check .` (config in `server/ruff.toml`).
+**Lint:** `cd server && venv/Scripts/python -m ruff check .` (Linux: `venv/bin/python`; config in `server/ruff.toml`).
 
 ### Server Architecture
 
@@ -116,7 +117,7 @@ venv/Scripts/python -m pytest -q                          # Linux: venv/bin/pyth
 - **Timestamps**: Stored as UTC ISO 8601 with `+00:00` suffix, converted to local time in browser
 - **Multi-frame**: Per-frame image assignment via `frame_images` table, per-frame wake interval, frame naming
 - **Battery alerts**: `notifier.py` — after each `/api/status`, a background task checks *all* frames and sends one SMTP digest email (stdlib `smtplib`). SMTP creds in `.env` (`PHOTOFRAME_SMTP_*`); recipient + threshold in the `settings` table via the dashboard. State: `frames.low_battery_alerted_at`. See ADR-022
-- **Tests**: `tests/conftest.py` points `PHOTOFRAME_DATA_DIR` at a temp dir — `test_api.py` wipes the DB/images between tests, so never bypass it
+- **Tests**: `tests/conftest.py` points `PHOTOFRAME_DATA_DIR` at a temp dir — `test_api.py` wipes the DB/images between tests, so never bypass it. It also resets `notifier._lock` per test (pytest-asyncio uses a fresh loop each test). Stub email by monkeypatching `notifier.send_email` (looked up at call time, so it covers `main.py` too); httpx `ASGITransport` awaits `BackgroundTasks`, so API tests can assert on sent mail right after the request
 
 ## Component Map
 
