@@ -48,3 +48,67 @@ def test_data_dir_empty_string_falls_back_to_base_dir(fresh_config, monkeypatch)
     monkeypatch.setenv("PHOTOFRAME_DATA_DIR", "")
     config = importlib.reload(fresh_config)
     assert config.DATA_DIR == config.BASE_DIR
+
+
+SMTP_VARS = (
+    "PHOTOFRAME_SMTP_HOST", "PHOTOFRAME_SMTP_PORT", "PHOTOFRAME_SMTP_TLS",
+    "PHOTOFRAME_SMTP_USER", "PHOTOFRAME_SMTP_PASSWORD", "PHOTOFRAME_SMTP_FROM",
+)
+
+
+def _clear_smtp_env(monkeypatch):
+    for var in SMTP_VARS:
+        monkeypatch.delenv(var, raising=False)
+
+
+def test_smtp_defaults(fresh_config, monkeypatch):
+    _clear_smtp_env(monkeypatch)
+    config = importlib.reload(fresh_config)
+    assert config.SMTP_HOST == ""
+    assert config.SMTP_PORT == 587
+    assert config.SMTP_TLS == "starttls"
+    assert config.SMTP_USER == ""
+    assert config.SMTP_PASSWORD == ""
+    assert config.SMTP_FROM == ""
+
+
+def test_smtp_from_env(fresh_config, monkeypatch):
+    _clear_smtp_env(monkeypatch)
+    monkeypatch.setenv("PHOTOFRAME_SMTP_HOST", "smtp.example.com")
+    monkeypatch.setenv("PHOTOFRAME_SMTP_PORT", "465")
+    monkeypatch.setenv("PHOTOFRAME_SMTP_TLS", "SSL")
+    monkeypatch.setenv("PHOTOFRAME_SMTP_USER", "user@example.com")
+    monkeypatch.setenv("PHOTOFRAME_SMTP_PASSWORD", "secret")
+    monkeypatch.setenv("PHOTOFRAME_SMTP_FROM", "frames@example.com")
+    config = importlib.reload(fresh_config)
+    assert config.SMTP_HOST == "smtp.example.com"
+    assert config.SMTP_PORT == 465
+    assert config.SMTP_TLS == "ssl"
+    assert config.SMTP_USER == "user@example.com"
+    assert config.SMTP_PASSWORD == "secret"
+    assert config.SMTP_FROM == "frames@example.com"
+
+
+def test_smtp_from_falls_back_to_user(fresh_config, monkeypatch):
+    _clear_smtp_env(monkeypatch)
+    monkeypatch.setenv("PHOTOFRAME_SMTP_USER", "user@example.com")
+    config = importlib.reload(fresh_config)
+    assert config.SMTP_FROM == "user@example.com"
+
+
+def test_smtp_blank_values_use_defaults(fresh_config, monkeypatch):
+    # `PHOTOFRAME_SMTP_PORT=` (blank line in .env) must not crash int().
+    _clear_smtp_env(monkeypatch)
+    monkeypatch.setenv("PHOTOFRAME_SMTP_PORT", "")
+    monkeypatch.setenv("PHOTOFRAME_SMTP_TLS", "")
+    config = importlib.reload(fresh_config)
+    assert config.SMTP_PORT == 587
+    assert config.SMTP_TLS == "starttls"
+
+
+def test_smtp_invalid_tls_falls_back_to_starttls(fresh_config, monkeypatch, caplog):
+    _clear_smtp_env(monkeypatch)
+    monkeypatch.setenv("PHOTOFRAME_SMTP_TLS", "bogus")
+    config = importlib.reload(fresh_config)
+    assert config.SMTP_TLS == "starttls"
+    assert "PHOTOFRAME_SMTP_TLS" in caplog.text
