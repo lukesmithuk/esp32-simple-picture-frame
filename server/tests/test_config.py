@@ -112,3 +112,11 @@ def test_smtp_invalid_tls_falls_back_to_starttls(fresh_config, monkeypatch, capl
     config = importlib.reload(fresh_config)
     assert config.SMTP_TLS == "starttls"
     assert "PHOTOFRAME_SMTP_TLS" in caplog.text
+
+
+def test_smtp_invalid_port_falls_back_to_587(fresh_config, monkeypatch, caplog):
+    _clear_smtp_env(monkeypatch)
+    monkeypatch.setenv("PHOTOFRAME_SMTP_PORT", "not-a-number")
+    config = importlib.reload(fresh_config)
+    assert config.SMTP_PORT == 587
+    assert "PHOTOFRAME_SMTP_PORT" in caplog.text

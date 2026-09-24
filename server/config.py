@@ -14,7 +14,14 @@ PORT = int(os.environ.get("PHOTOFRAME_PORT", "8080"))
 
 # Email alerts (SMTP). An empty host disables email entirely.
 SMTP_HOST = os.environ.get("PHOTOFRAME_SMTP_HOST", "")
-SMTP_PORT = int(os.environ.get("PHOTOFRAME_SMTP_PORT") or "587")
+_smtp_port_raw = os.environ.get("PHOTOFRAME_SMTP_PORT") or "587"
+try:
+    SMTP_PORT = int(_smtp_port_raw)
+except ValueError:
+    logging.getLogger("uvicorn.error").warning(
+        "PHOTOFRAME_SMTP_PORT=%r is not a number; using 587", _smtp_port_raw,
+    )
+    SMTP_PORT = 587
 SMTP_TLS = (os.environ.get("PHOTOFRAME_SMTP_TLS") or "starttls").strip().lower()
 if SMTP_TLS not in ("starttls", "ssl"):
     logging.getLogger("uvicorn.error").warning(
