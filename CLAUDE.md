@@ -76,7 +76,7 @@ Python/FastAPI photo server (in `server/`).
 
 **Docker (recommended deployment):**
 ```bash
-cd server && cp .env.example .env && docker compose up -d
+cd server && cp .env.example .env && mkdir -p data && docker compose up -d
 ```
 Image: `ghcr.io/lukesmithuk/esp32-simple-picture-frame` (multi-arch amd64/arm64/armv7,
 built + published by `.github/workflows/ci.yml` on push to `main`). Data (DB, images,
@@ -87,6 +87,12 @@ compose `restart: unless-stopped` + Docker's daemon being enabled
 (`systemctl enable docker`) — no dedicated systemd unit. Migrate an old tarball install
 with `server/migrate-to-docker.sh /path/to/old/install` (full guide:
 `server/MIGRATION.md`).
+
+**Fresh Pi Zero 2W host:** `server/PI-ZERO-2W-SETUP.md` (OS flash → Docker → server).
+`server/pi/` holds host-side helpers copied to the SD card's `bootfs` and run on the
+Pi: `wifi-setup.sh` (replaces NetworkManager with wpa_supplicant + systemd-networkd
+for routers that refuse NM) and `set-resolution.sh` (console resolution via
+`cmdline.txt`). They aren't part of the Docker image or release tarball.
 
 **Tarball + systemd (deprecated, kept for non-Docker hosts):**
 ```bash

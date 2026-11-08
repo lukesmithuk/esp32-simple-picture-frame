@@ -48,6 +48,10 @@
 - [ ] Sanitize upload filenames — strip special characters, limit length
 - [ ] Rate-limit / CSRF-protect `POST /settings/alerts/test` — unauthenticated, so any page the owner visits could trigger test emails through their SMTP account
 
+## Server Deployment
+
+- [ ] `server/install-docker.sh` — one-command fresh install for the Docker path (only the deprecated tarball path has one, `setup.sh`). Should: install Docker if missing (ask first) + `systemctl enable docker` + add user to `docker` group; check Compose ≥ v2.24; create `.env` with a generated API key (`chmod 600`, never overwrite an existing one); create `data/` as the invoking user before the first `up` (if Docker creates it, it's root-owned and `update.sh` can't write backups); reuse `update.sh` to pull the image *before* `up` (avoids compose silently falling back to an on-device build) and wait for `/healthz`; print the URL plus `server_url`/`server_api_key` lines for the frame's `config.txt`. Then make it the primary install command in README and mark `setup.sh` as the deprecated path.
+
 ## Web UI
 
 - [ ] Live updates — auto-refresh frames table and gallery (polling or SSE) so the dashboard stays current without manual reload
