@@ -367,3 +367,30 @@ keeps multi-frame households to roughly one email a day (plus one whenever
 another frame newly goes low). A frame that dies while low
 keeps appearing in reminders because other frames' reports drive the check.
 That is intentional, since a silent low frame is almost certainly flat.
+
+---
+
+## ADR-023 — Pi Zero 2W host: 64-bit OS for new installs, wpa_supplicant WiFi fallback
+
+**Status:** Accepted
+**Date:** 2026-11-08
+
+**Decision:** New Pi Zero 2W server installs use **Raspberry Pi OS Lite
+(64-bit)** (`server/PI-ZERO-2W-SETUP.md`). The `linux/arm/v7` image build from
+ADR-021 stays, for existing 32-bit hosts. Where a router refuses
+NetworkManager's WiFi association but plain `wpa_supplicant` connects,
+`server/pi/wifi-setup.sh` disables NetworkManager and runs
+`wpa_supplicant@wlan0` + `systemd-networkd` (DHCP) with a static
+`/etc/resolv.conf`.
+
+**Rationale:** Docker has said v28 is the last major Engine version for 32-bit
+Raspberry Pi OS, so a 32-bit host is stuck on an old Docker release. arm64 is
+also the better-trodden image path (armv7 compiles Pillow from source). The
+cost is somewhat higher RAM use, which the single-process server tolerates in
+512 MB. The WiFi fallback comes from a real reinstall: on a Vodafone
+WPA2/WPA3 hub, NetworkManager's association was rejected instantly on both
+Trixie 64-bit and Bookworm 32-bit. Forcing WPA2, changing PMF, locking a
+BSSID, a random MAC address and a `brcmfmac` driver option made no difference.
+A phone hotspot and a bare `wpa_supplicant` both connected. The root cause in
+NetworkManager wasn't isolated, so the fallback is a documented opt-in script
+rather than a default.

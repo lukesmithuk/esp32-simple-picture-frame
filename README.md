@@ -28,14 +28,20 @@ Includes a self-hosted photo server with a web UI for uploading and managing ima
 
 ### Server (Raspberry Pi or any Linux machine)
 
+**Starting from a blank Pi Zero 2W?** Follow [server/PI-ZERO-2W-SETUP.md](server/PI-ZERO-2W-SETUP.md):
+flashing the OS, first boot, Docker, the server itself, and WiFi/display
+troubleshooting (with helper scripts in [`server/pi/`](server/pi/)).
+
 **Option A — Docker (recommended).** Runs the multi-arch image published by CI
-(`linux/amd64`, `linux/arm64`, `linux/arm/v7` — covers the Pi Zero 2W on 32-bit OS).
+(`linux/amd64`, `linux/arm64`, `linux/arm/v7` — covers the Pi Zero 2W on 64-bit or 32-bit OS;
+new installs should use 64-bit, see ADR-023).
 Needs a recent Docker Engine + Compose v2 (install via [get.docker.com](https://get.docker.com);
 the `env_file` form in `compose.yaml` requires Compose **v2.24+**).
 
 ```bash
 cd server
 cp .env.example .env          # set PHOTOFRAME_API_KEY
+mkdir -p data                 # create as your user; if Docker creates it, it's root-owned and update.sh can't back up
 docker compose up -d          # ghcr.io/lukesmithuk/esp32-simple-picture-frame
 ```
 
@@ -131,7 +137,7 @@ venv\Scripts\python -m pytest                 # run tests
 $env:PHOTOFRAME_API_KEY="changeme"; venv\Scripts\python main.py   # run locally
 ```
 
-The `*.sh` scripts (`setup.sh`, `run.sh`, `uninstall.sh`, `migrate-to-docker.sh`, `update.sh`) target Linux.
+The `*.sh` scripts (`setup.sh`, `run.sh`, `uninstall.sh`, `migrate-to-docker.sh`, `update.sh`, and the Pi host helpers in `server/pi/`) target Linux.
 
 ### Frame Firmware
 
