@@ -36,7 +36,7 @@ echo "Pulling $IMAGE..."
 docker pull "$IMAGE"
 
 # Check the backup can be written BEFORE stopping anything, so a permissions
-# problem can't leave the server down. If Docker created data/ on first
+# problem doesn't take the server down. If Docker created data/ on first
 # `compose up` (it didn't exist yet), it is root-owned and we can't write here.
 if [ -f "$DATA_DIR/photoframe.db" ]; then
     if ! mkdir -p "$BACKUP_DIR" 2>/dev/null || [ ! -w "$BACKUP_DIR" ] \
@@ -54,7 +54,14 @@ BACKUP=""
 if [ -f "$DATA_DIR/photoframe.db" ]; then
     docker compose stop
     BACKUP="$BACKUP_DIR/photoframe-$(date +%Y%m%d-%H%M%S).db"
-    cp "$DATA_DIR/photoframe.db" "$BACKUP"
+    # A failed copy (e.g. a full SD card) must not leave the server stopped.
+    if ! cp "$DATA_DIR/photoframe.db" "$BACKUP"; then
+        rm -f "$BACKUP"
+        echo "Error: database backup failed (disk full?). Restarting the existing"
+        echo "container without updating; check free space with: df -h $DATA_DIR"
+        docker compose start
+        exit 1
+    fi
     echo "Backed up database to $BACKUP"
     # Keep only the newest $KEEP_BACKUPS backups.
     ls -1t "$BACKUP_DIR"/photoframe-*.db 2>/dev/null | tail -n +$((KEEP_BACKUPS + 1)) \

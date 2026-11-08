@@ -224,7 +224,11 @@ Reboot once to confirm it reconnects by itself. Instructions to undo it are at
 the top of the script.
 
 Once it's in place, `nmcli` no longer manages WiFi. To change network, run the
-script again.
+script again. If the new settings don't produce an IP address within 60
+seconds, it restores the previous working setup automatically. On a first run,
+that means handing WiFi back to NetworkManager. Running it over SSH is safe:
+the session drops while WiFi restarts, but the script keeps going and logs
+progress to `/var/log/wifi-setup.log`.
 
 These NetworkManager changes were tried on a Vodafone WPA2/WPA3 hub and did
 **not** help, so they're probably not worth repeating: forcing WPA2

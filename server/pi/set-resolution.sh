@@ -5,7 +5,8 @@
 #   sudo bash /boot/firmware/set-resolution.sh 720     # 1280x720 @ 60Hz
 #   sudo bash /boot/firmware/set-resolution.sh 1080    # 1920x1080 @ 60Hz
 #   sudo bash /boot/firmware/set-resolution.sh auto    # remove override (use monitor's preferred mode)
-# Then reboot. A backup of the previous file is kept as cmdline.txt.bak.
+# Then reboot. The first run saves the original file as cmdline.txt.bak; later
+# runs keep that original backup rather than overwriting it.
 set -euo pipefail
 
 case "${1:-}" in
@@ -32,7 +33,8 @@ if [ -z "$CMDLINE" ]; then
     exit 1
 fi
 
-cp "$CMDLINE" "$CMDLINE.bak"
+# Keep the ORIGINAL file: only back up if no backup exists yet.
+[ -f "$CMDLINE.bak" ] || cp "$CMDLINE" "$CMDLINE.bak"
 
 # cmdline.txt must be a single line. Join any lines, drop CRs (in case it was
 # edited on Windows), remove any existing HDMI video= override, tidy spaces.
@@ -50,7 +52,7 @@ fi
 
 printf '%s\n' "$LINE" > "$CMDLINE"
 
-echo "Updated $CMDLINE (backup: $CMDLINE.bak):"
+echo "Updated $CMDLINE (original saved as $CMDLINE.bak):"
 cat "$CMDLINE"
 echo
 if [ -n "$MODE" ]; then
