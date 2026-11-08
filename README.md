@@ -33,7 +33,8 @@ flashing the OS, first boot, Docker, the server itself, and WiFi/display
 troubleshooting (with helper scripts in [`server/pi/`](server/pi/)).
 
 **Option A — Docker (recommended).** Runs the multi-arch image published by CI
-(`linux/amd64`, `linux/arm64`, `linux/arm/v7` — covers the Pi Zero 2W on 32-bit OS).
+(`linux/amd64`, `linux/arm64`, `linux/arm/v7` — covers the Pi Zero 2W on 64-bit or 32-bit OS;
+new installs should use 64-bit, see ADR-023).
 Needs a recent Docker Engine + Compose v2 (install via [get.docker.com](https://get.docker.com);
 the `env_file` form in `compose.yaml` requires Compose **v2.24+**).
 
@@ -136,7 +137,7 @@ venv\Scripts\python -m pytest                 # run tests
 $env:PHOTOFRAME_API_KEY="changeme"; venv\Scripts\python main.py   # run locally
 ```
 
-The `*.sh` scripts (`setup.sh`, `run.sh`, `uninstall.sh`, `migrate-to-docker.sh`, `update.sh`) target Linux.
+The `*.sh` scripts (`setup.sh`, `run.sh`, `uninstall.sh`, `migrate-to-docker.sh`, `update.sh`, and the Pi host helpers in `server/pi/`) target Linux.
 
 ### Frame Firmware
 

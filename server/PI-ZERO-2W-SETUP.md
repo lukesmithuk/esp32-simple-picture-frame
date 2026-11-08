@@ -14,7 +14,8 @@ on the Pi (over SSH, or on a monitor + keyboard if WiFi needs fixing).
 - A **5 V / 2.5 A** power supply plugged into the port labelled **PWR**, not
   the one labelled USB. A weak supply causes WiFi drop-outs and random resets.
 - A **2.4 GHz** WiFi network. The Zero 2W has no 5 GHz radio, and it cannot
-  join a WPA3-only network (WPA2 or WPA2/WPA3 mixed is fine).
+  join a WPA3-only network. WPA2 works; WPA2/WPA3 mixed should work, but one
+  such router needed the [WiFi fallback](#when-the-router-refuses-networkmanager).
 - [Raspberry Pi Imager](https://www.raspberrypi.com/software/) **2.0 or newer**.
   Older Imager versions can't apply settings to current Raspberry Pi OS images,
   so the WiFi, SSH and hostname you enter are silently ignored.
