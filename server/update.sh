@@ -35,11 +35,24 @@ IMAGE="$(docker compose config --images | head -n 1)"
 echo "Pulling $IMAGE..."
 docker pull "$IMAGE"
 
+# Check the backup can be written BEFORE stopping anything, so a permissions
+# problem can't leave the server down. If Docker created data/ on first
+# `compose up` (it didn't exist yet), it is root-owned and we can't write here.
+if [ -f "$DATA_DIR/photoframe.db" ]; then
+    if ! mkdir -p "$BACKUP_DIR" 2>/dev/null || [ ! -w "$BACKUP_DIR" ] \
+        || [ ! -r "$DATA_DIR/photoframe.db" ]; then
+        echo "Error: can't write database backups to $BACKUP_DIR (or read the DB)."
+        echo "data/ is probably root-owned because Docker created it. Fix with:"
+        echo "  sudo mkdir -p \"$BACKUP_DIR\" && sudo chown \"$(id -un):\" \"$DATA_DIR\" \"$BACKUP_DIR\""
+        echo "Then re-run ./update.sh. Nothing was stopped; the server is still running."
+        exit 1
+    fi
+fi
+
 # Stop before copying so SQLite is not mid-write during the backup.
 BACKUP=""
 if [ -f "$DATA_DIR/photoframe.db" ]; then
     docker compose stop
-    mkdir -p "$BACKUP_DIR"
     BACKUP="$BACKUP_DIR/photoframe-$(date +%Y%m%d-%H%M%S).db"
     cp "$DATA_DIR/photoframe.db" "$BACKUP"
     echo "Backed up database to $BACKUP"
